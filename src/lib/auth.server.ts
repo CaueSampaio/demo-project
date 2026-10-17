@@ -7,20 +7,9 @@ import { configService } from "./config.server";
 import { getServerSidePrismaClient } from "./db.server";
 import { z } from "zod";
 
-// In production, use a proper secret from environment variables
-function resolveCookieSecret(): string {
-  const secret = process.env.COOKIE_SECRET;
-  if (secret) return secret;
-
-  // Safe fallback for local dev only; every other environment must provide it.
-  if (configService.getAppConfig().environment === "development") {
-    return "dev-secret-change-in-production";
-  }
-
-  throw new Error("COOKIE_SECRET is required in non-development environments");
-}
-
-const COOKIE_SECRET = resolveCookieSecret();
+// Single source of truth: the secret is resolved and fail-fast validated when
+// config.server.ts is initialized. Never re-read process.env here.
+const COOKIE_SECRET = configService.getAppConfig().cookieSecret;
 
 /**
  * Signs a user ID to create a tamper-proof session token
