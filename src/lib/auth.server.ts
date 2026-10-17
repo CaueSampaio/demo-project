@@ -3,11 +3,24 @@ import { redirect } from "@tanstack/react-router";
 import { getCookie, setCookie, deleteCookie } from "@tanstack/react-start/server";
 import { createMiddleware, createServerFn } from "@tanstack/react-start";
 import { sessionCookieName } from "./auth.consts";
+import { configService } from "./config.server";
 import { getServerSidePrismaClient } from "./db.server";
 import { z } from "zod";
 
 // In production, use a proper secret from environment variables
-const COOKIE_SECRET = process.env.COOKIE_SECRET || "dev-secret-change-in-production";
+function resolveCookieSecret(): string {
+  const secret = process.env.COOKIE_SECRET;
+  if (secret) return secret;
+
+  // Safe fallback for local dev only; every other environment must provide it.
+  if (configService.getAppConfig().environment === "development") {
+    return "dev-secret-change-in-production";
+  }
+
+  throw new Error("COOKIE_SECRET is required in non-development environments");
+}
+
+const COOKIE_SECRET = resolveCookieSecret();
 
 /**
  * Signs a user ID to create a tamper-proof session token
