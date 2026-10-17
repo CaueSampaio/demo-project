@@ -24,6 +24,9 @@ sessions/.archived/
 
 generated/
 
+# local sqlite dev database (postgres is the dev datasource now)
+prisma/db/
+
 # Playwright
 playwright-report/
 test-results/

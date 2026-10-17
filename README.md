@@ -55,6 +55,9 @@ Please use [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/
 # Install dependencies
 bun install
 
+# Copy environment variables
+cp .env.local.example .env.local
+
 # Start development server with Docker (includes PostgreSQL)
 bun run dev
 

@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "./scripts/dev.sh up",
     "dev:down": "./scripts/dev.sh down",
-    "db:migrate": "DATABASE_URL=postgresql://postgres:postgres@localhost:5432/demo_project prisma migrate dev",
+    "db:migrate": "prisma migrate dev",
     "build": "vite build",
     "serve": "vite preview",
     "format": "prettier --write .",
@@ -28,6 +28,7 @@
     "@tanstack/react-router-ssr-query": "^1.139.3",
     "@tanstack/react-start": "^1.139.3",
     "@tanstack/router-plugin": "^1.139.3",
+    "dotenv": "^18.0.8",
     "lucide-react": "^0.562.0",
     "motion": "^12.26.2",
     "nitro": "^3.0.1-alpha.1",

@@ -15,6 +15,10 @@ class AppConfigService<ConfigType> {
 }
 
 export const configService = new AppConfigService({
-  environment: process.env.ENVIRONMENT as "development" | "test" | "staging" | "production",
+  environment: (process.env.VITE_ENVIRONMENT ?? "development") as
+    | "development"
+    | "test"
+    | "staging"
+    | "production",
   database: { url: process.env.DATABASE_URL },
 });
