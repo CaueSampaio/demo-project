@@ -14,6 +14,7 @@ const navItems = [
   { to: "/current-workout", label: "Current Workout", icon: Dumbbell },
   { to: "/workout-history", label: "Workout History", icon: History },
   { to: "/movements", label: "Movements", icon: BicepsFlexed },
+  { to: "/profile", label: "Profile", icon: User },
 ] as const;
 
 function RouteComponent() {
