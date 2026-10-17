@@ -40,6 +40,33 @@ export async function createTestUser(): Promise<{ id: string; email: string }> {
  * auth flow. Signature matches src/lib/auth.server.ts (HMAC-SHA256 of the
  * user ID keyed with COOKIE_SECRET).
  */
+/**
+ * Seeds fixed-timestamp weight entries for a user directly in the dev
+ * database, so ordering/gap tests do not depend on wall-clock time.
+ * Rows sharing the same `daysAgo` are offset by one hour per occurrence so
+ * `recordedAt` values stay unique (stable ordering) on the same calendar day.
+ */
+export async function seedWeights(
+  userId: string,
+  rows: { daysAgo: number; weightLbs: number }[],
+): Promise<void> {
+  const prisma = getTestPrismaClient();
+  const seenDays = new Map<number, number>();
+  await prisma.bodyWeightRecord.createMany({
+    data: rows.map(({ daysAgo, weightLbs }) => {
+      const sameDayIndex = seenDays.get(daysAgo) ?? 0;
+      seenDays.set(daysAgo, sameDayIndex + 1);
+      return {
+        userId,
+        weightLbs,
+        recordedAt: new Date(
+          Date.now() - daysAgo * 86_400_000 - sameDayIndex * 3_600_000,
+        ),
+      };
+    }),
+  });
+}
+
 export function sessionCookieFor(userId: string): Cookie[] {
   const signature = crypto.createHmac("sha256", COOKIE_SECRET).update(userId).digest("hex");
   return [
