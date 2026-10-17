@@ -6,6 +6,7 @@ import { useSuspenseQuery, useMutation, useQueryClient } from "@tanstack/react-q
 import { bodyWeightsQueryOptions } from "./-queries/profile";
 import { addBodyWeightServerFn, deleteWeightServerFn } from "@/lib/weight.server";
 import { WeightInput, isValidWeight } from "@/components/weight-input";
+import { WeightChart } from "./weight-chart";
 
 export const Route = createFileRoute("/__index/_layout/profile/")({
   loader: async ({ context }) => {
@@ -63,6 +64,8 @@ function ProfilePage() {
               {addBodyWeightMutation.isPending ? "Adding..." : "Add"}
             </Button>
           </form>
+
+          {bodyWeights.length > 0 && <WeightChart records={bodyWeights} />}
 
           {bodyWeights.length === 0 ? (
             <p className="text-sm text-slate-500">No weight entries yet. Add one above!</p>

@@ -54,4 +54,12 @@ test.describe("authed profile page", () => {
     await page.getByRole("button", { name: /delete/i }).first().click();
     await expect(page.getByText(/190 lbs/)).not.toBeVisible();
   });
+
+  test(`renders the weight-over-time chart after adding an entry`, async ({ page }) => {
+    await page.goto("/profile");
+    await page.getByLabel("Weight").fill("184");
+    await page.getByRole("button", { name: /add/i }).click();
+    await page.getByText(/184 lbs/).waitFor();
+    await expect(page.locator(`svg[aria-label="Weight over time"]`)).toBeVisible();
+  });
 });
