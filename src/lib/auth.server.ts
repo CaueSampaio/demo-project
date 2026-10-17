@@ -54,7 +54,9 @@ function setSessionCookie(userId: string) {
     httpOnly: true,
     // Unified environment config: VITE_ENVIRONMENT is provisioned at build
     // and runtime (see Dockerfile); NODE_ENV is not reliable at runtime.
-    secure: configService.getAppConfig().environment === "production",
+    // Fail-closed: secure on every non-development environment (staging,
+    // test, production) so a mis-typed env name can't disable it.
+    secure: configService.getAppConfig().environment !== "development",
     sameSite: "lax",
     expires: expiresAt,
   });

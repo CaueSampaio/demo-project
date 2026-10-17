@@ -3,3 +3,7 @@ generated/
 .env
 .env.local
 .env.*.local
+.output
+.nitro
+.tanstack
+.git
