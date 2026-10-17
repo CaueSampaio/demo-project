@@ -15,7 +15,7 @@ class AppConfigService<ConfigType> {
 }
 
 export const configService = new AppConfigService({
-  environment: (process.env.VITE_ENVIRONMENT ?? "development") as
+  environment: (process.env.VITE_ENVIRONMENT || "development") as
     | "development"
     | "test"
     | "staging"

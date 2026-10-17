@@ -76,6 +76,10 @@ jobs:
             echo "branch_tag=staging" >> $GITHUB_OUTPUT
             echo "env_tag=staging" >> $GITHUB_OUTPUT
             echo "node_env=production" >> $GITHUB_OUTPUT
+          else
+            echo "branch_tag=" >> $GITHUB_OUTPUT
+            echo "env_tag=production" >> $GITHUB_OUTPUT
+            echo "node_env=production" >> $GITHUB_OUTPUT
           fi
 
       - name: Build and push Docker image
@@ -92,5 +96,5 @@ jobs:
           tags: |
             ${{ github.ref == 'refs/heads/main' && format('ghcr.io/{0}:latest', github.repository) || '' }}
             ghcr.io/${{ github.repository }}:${{ github.sha }}
-            ghcr.io/${{ github.repository }}:${{ steps.env-tags.outputs.branch_tag }}
+            ${{ steps.env-tags.outputs.branch_tag && format('ghcr.io/{0}:{1}', github.repository, steps.env-tags.outputs.branch_tag) || '' }}
             ghcr.io/${{ github.repository }}:${{ steps.env-tags.outputs.env_tag }}
