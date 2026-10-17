@@ -36,11 +36,6 @@ export async function createTestUser(): Promise<{ id: string; email: string }> {
 }
 
 /**
- * Forges the signed session cookie the server would set, so tests skip the
- * auth flow. Signature matches src/lib/auth.server.ts (HMAC-SHA256 of the
- * user ID keyed with COOKIE_SECRET).
- */
-/**
  * Seeds fixed-timestamp weight entries for a user directly in the dev
  * database, so ordering/gap tests do not depend on wall-clock time.
  * Rows sharing the same `daysAgo` are offset by one hour per occurrence so
@@ -67,6 +62,11 @@ export async function seedWeights(
   });
 }
 
+/**
+ * Forges the signed session cookie the server would set, so tests skip the
+ * auth flow. Signature matches src/lib/auth.server.ts (HMAC-SHA256 of the
+ * user ID keyed with COOKIE_SECRET).
+ */
 export function sessionCookieFor(userId: string): Cookie[] {
   const signature = crypto.createHmac("sha256", COOKIE_SECRET).update(userId).digest("hex");
   return [
