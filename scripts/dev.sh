@@ -20,7 +20,13 @@ case "${1}" in
     # Trap to kill tsr watch when script exits
     trap "kill $TSR_PID 2>/dev/null" EXIT
 
-    USER_ID=$(id -u) GROUP_ID=$(id -g) docker compose --env-file ".env.local" -f $COMPOSE_FILE watch
+    # No --env-file: compose auto-reads the root .env for interpolation
+    # (so PORT there is honored). Note compose does NOT read .env.local;
+    # values that belong in .env.local go inside the container via the
+    # env_file list in docker-compose.dev.yml, not interpolation.
+    # USER_ID/GROUP_ID are interpolated from the shell env set below
+    # (shell wins over .env) with sane compose defaults.
+    USER_ID=$(id -u) GROUP_ID=$(id -g) docker compose -f $COMPOSE_FILE watch
     ;;
   "down")
     echo "Shutting down Docker services..."

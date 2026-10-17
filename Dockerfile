@@ -25,5 +25,10 @@ CMD ["vite", "dev", "--host", "0.0.0.0", "--port", "3000"]
 FROM deps AS production
 WORKDIR /app
 ARG NODE_ENV
-RUN NODE_ENV=$NODE_ENV bun run build
+# VITE_ENVIRONMENT must be available at build time (import.meta.env baking takes
+# priority over .env files) and at runtime (server-side process.env reads).
+ARG VITE_ENVIRONMENT=production
+ENV NODE_ENV=$NODE_ENV \
+    VITE_ENVIRONMENT=$VITE_ENVIRONMENT
+RUN bun run build
 CMD ["./scripts/entry.sh"]

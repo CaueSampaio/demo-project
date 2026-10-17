@@ -3,11 +3,13 @@ import { redirect } from "@tanstack/react-router";
 import { getCookie, setCookie, deleteCookie } from "@tanstack/react-start/server";
 import { createMiddleware, createServerFn } from "@tanstack/react-start";
 import { sessionCookieName } from "./auth.consts";
+import { configService } from "./config.server";
 import { getServerSidePrismaClient } from "./db.server";
 import { z } from "zod";
 
-// In production, use a proper secret from environment variables
-const COOKIE_SECRET = process.env.COOKIE_SECRET || "dev-secret-change-in-production";
+// Single source of truth: the secret is resolved and fail-fast validated when
+// config.server.ts is initialized. Never re-read process.env here.
+const COOKIE_SECRET = configService.getAppConfig().cookieSecret;
 
 /**
  * Signs a user ID to create a tamper-proof session token
@@ -39,7 +41,11 @@ function setSessionCookie(userId: string) {
 
   setCookie(sessionCookieName, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    // Unified environment config: VITE_ENVIRONMENT is provisioned at build
+    // and runtime (see Dockerfile); NODE_ENV is not reliable at runtime.
+    // Fail-closed: secure on every non-development environment (staging,
+    // test, production) so a mis-typed env name can't disable it.
+    secure: configService.getAppConfig().environment !== "development",
     sameSite: "lax",
     expires: expiresAt,
   });

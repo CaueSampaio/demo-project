@@ -1,2 +1,9 @@
 node_modules
 generated/
+.env
+.env.local
+.env.*.local
+.output
+.nitro
+.tanstack
+.git

@@ -18,6 +18,9 @@ const config = defineConfig(({ mode }) => {
       tanstackStart(),
       nitro({
         preset: "node-server",
+        // Bun resolves package exports with the "bun" condition (e.g.
+        // react-dom/server -> server.bun.js); tracing must match the runtime.
+        exportConditions: ["bun", "node"],
       }),
       viteReact(),
     ],
