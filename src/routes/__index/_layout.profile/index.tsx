@@ -22,16 +22,8 @@ function ProfilePage() {
           <CardTitle>Weight Tracking</CardTitle>
         </CardHeader>
         <CardContent>
-          {bodyWeights.length === 0 ? (
+          {bodyWeights.length === 0 && (
             <p className="text-sm text-slate-500">No weight entries yet. Add one above!</p>
-          ) : (
-            <ul className="space-y-2">
-              {bodyWeights.map((record) => (
-                <li key={record.id} className="px-3 py-2 bg-slate-50 rounded-lg text-sm font-medium text-slate-700">
-                  {record.weightLbs} lbs
-                </li>
-              ))}
-            </ul>
           )}
         </CardContent>
       </Card>
