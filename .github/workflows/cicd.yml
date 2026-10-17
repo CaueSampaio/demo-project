@@ -88,6 +88,7 @@ jobs:
           push: true
           build-args: |
             NODE_ENV=${{ steps.env-tags.outputs.node_env }}
+            VITE_ENVIRONMENT=${{ steps.env-tags.outputs.env_tag }}
           tags: |
             ${{ github.ref == 'refs/heads/main' && format('ghcr.io/{0}:latest', github.repository) || '' }}
             ghcr.io/${{ github.repository }}:${{ github.sha }}
