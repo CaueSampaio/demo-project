@@ -1,6 +1,4 @@
 
-@sessions/CLAUDE.sessions.md
-
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
@@ -13,15 +11,16 @@ This project uses **Bun** as the package manager and runtime.
 
 ### Local Development
 
-- `bun run dev` - Start development server on port 3000
+- `bun run dev` or `./scripts/dev.sh up` - Start full Docker development environment (port 3000)
+- `bun run dev:down` or `./scripts/dev.sh down` - Stop Docker services
 - `bun run build` - Build for production
-- `bun run start` - Start production server
-- `bun run test` - Run tests with Vitest
-
-### Docker Development
-
-- `bun run dev:docker` or `./scripts/dev.sh up` - Start full Docker development environment (port 3000)
-- `bun run dev:docker:down` or `./scripts/dev.sh down` - Stop Docker services
+- `bun run serve` - Preview the production build
+- `bun run typecheck` - Run TypeScript type checking (`tsc --noEmit`)
+- `bun run generate` - Generate Prisma Client
+- `bun run db:migrate` - Run database migrations (`prisma migrate dev`)
+- `bun run test` - Run tests with Playwright
+- `bun run test:ui` - Run tests with Playwright UI mode
+- `bun run format` - Format code with Prettier (`prettier --write .`)
 
 The Docker setup uses volume mounts for hot reloading and ensures TypeScript type generation works locally.
 
@@ -34,16 +33,23 @@ The Docker setup uses volume mounts for hot reloading and ensures TypeScript typ
 - **State Management**: TanStack Query for server state
 - **Forms**: TanStack Form
 - **Styling**: Tailwind CSS v4 + Better Bookkeeping UI component library
-- **Testing**: Vitest + React Testing Library
+- **Testing**: Playwright (e2e tests in `e2e/`)
 - **TypeScript**: Strict mode enabled with path aliases (`@/*`)
 
 ### Project Structure
 
 - `src/routes/` - File-based routing (TanStack Router auto-generates `routeTree.gen.ts`)
-- `src/components/` - Reusable React components
+- `src/components/ui/` - Reusable React components
 - `src/integrations/tanstack-query/` - TanStack Query setup and providers
-- `src/hooks/` - Custom React hooks
-- `src/lib/stripe/` - Stripe integration (subscriptions, checkout, utilities)
+- `src/lib/` - Server-side domain logic and shared utilities:
+  - `auth.server.ts` + `auth.consts.ts` - Auth0-based authentication (server functions + auth middleware)
+  - `config.server.ts` / `config.client.ts` - Runtime configuration for server and client
+  - `db.server.ts` - Prisma client with the PostgreSQL driver adapter (`@prisma/adapter-pg`)
+  - `movements.server.ts` - Movement server functions (list, create)
+  - `workouts.server.ts` - Workout server functions (create, complete, sets, history, delete)
+  - `get-server-config.server.ts` - Server config exposed to the client at runtime
+  - `types.ts` / `utils.ts` - Shared types and utilities
+- `e2e/` - Playwright end-to-end tests
 - `public/` - Static assets
 
 ### Router Configuration
@@ -96,7 +102,6 @@ This project uses a multi-layered approach to state management:
 - **TanStack Form** - For complex form handling and validation
   - Type-safe form state management
   - Built-in validation and error handling
-  - Located in `src/hooks/` for custom form implementations
 
 #### Data Loading Patterns
 
@@ -118,38 +123,16 @@ This project uses a multi-layered approach to state management:
 - Vite config includes TanStack Start plugin and React plugin
 - You run in an environment where ast-grep is available. Whenever a search requires syntax-aware or structural matching, default to `ast-grep run --lang tsx -p '<pattern>'` (or set lang appropriately) and avoid falling back to text-only tools like `rg` or `grep` unless I explicitly request a plain-text search.
 
-## Stripe Integration
+## Server Functions
 
-### Billing Flow
+Server-side logic lives in `src/lib/*.server.ts` as TanStack Start server functions (`createServerFn`):
 
-The onboarding flow includes a conditional billing step (step 6) that appears when users have:
-- Subscriptions with `awaiting_initial_payment` status, OR
-- One-time payments with `open` invoice status
+- **Auth** (`src/lib/auth.server.ts`): `getUserServerFn`, `signInServerFn`, `createAccountServerFn`, `logoutServerFn`, plus `authMiddleware` for protecting functions
+- **Workouts** (`src/lib/workouts.server.ts`): `createWorkoutServerFn`, `getCurrentWorkoutServerFn`, `completeWorkoutServerFn`, `addSetServerFn`, `deleteSetServerFn`, `getWorkoutHistoryServerFn`, `deleteWorkoutsServerFn`
+- **Movements** (`src/lib/movements.server.ts`): `getMovementsServerFn`, `createMovementServerFn`
+- **Config** (`src/lib/get-server-config.server.ts`): `getServerConfigServerFn` exposes server config to the client at runtime
 
-### Server Functions
-
-Stripe operations are handled via server functions in `src/lib/stripe/subscriptions.server.ts`:
-- `getUserSubscriptionsServerFn` - Fetches user's subscriptions and one-time payments
-- `createCheckoutSessionServerFn` - Creates Stripe embedded checkout sessions
-- `markTestSubscriptionAsPaidServerFn` - Development/testing utility for test subscriptions
-
-### Dynamic Step Indicator
-
-The `useTotalSteps` hook (`src/hooks/use-total-steps.ts`) dynamically calculates total steps:
-- Returns 6 if user has pending payments (shows billing step)
-- Returns 5 if no pending payments (skips billing step)
-- All step routes should use this hook and pass `totalSteps` to `OnboardingStepLayout`
-
-### Configuration
-
-Stripe configuration requires:
-- **Server config** (`src/lib/config.server.ts`): `stripe.secretKey`
-- **Client config** (`src/lib/config.client.ts`): `stripe.publicKey` (via `VITE_STRIPE_PUBLIC_KEY`)
-- Stripe client uses singleton pattern with API version `2025-11-17.clover`
-
-### Webhook Dependency
-
-The onboarding app **does not handle Stripe webhooks**. Subscription status updates after checkout depend on the main Abacus app's Stripe sync service processing webhook events. After successful checkout, the app waits 2.5 seconds for webhook processing before refetching subscription data.
+Server functions access the database through `getServerSidePrismaClient()` from `src/lib/db.server.ts`, which reads `DATABASE_URL` from the server config.
 
 ## Docker Notes
 
