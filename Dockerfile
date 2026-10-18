@@ -19,7 +19,7 @@ RUN bun run generate
 # development
 FROM deps AS development
 WORKDIR /app
-CMD ["vite", "dev", "--host", "0.0.0.0", "--port", "3000"]
+CMD ["bun", "--bun", "vite", "dev", "--host", "0.0.0.0", "--port", "3000"]
 
 # production
 FROM deps AS production
@@ -31,4 +31,5 @@ ARG VITE_ENVIRONMENT=production
 ENV NODE_ENV=$NODE_ENV \
     VITE_ENVIRONMENT=$VITE_ENVIRONMENT
 RUN bun run build
+USER appuser
 CMD ["./scripts/entry.sh"]
