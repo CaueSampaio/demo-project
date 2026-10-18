@@ -7,7 +7,7 @@ import { Trash2 } from "lucide-react";
 import { workoutHistoryQueryOptions } from "./-queries/workout-history";
 import { useSuspenseQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { JSX } from "react";
-import { barX, defineChart } from "@tanstack/charts";
+import { barX, colorLegend, colorLegendItems, defineChart } from "@tanstack/charts";
 import { scaleBand } from "@tanstack/charts/scales/band";
 import { scaleLinear } from "@tanstack/charts/scales/linear";
 import { tooltip } from "@tanstack/charts/tooltip";
@@ -47,19 +47,60 @@ type MovementSummary = {
   values: Record<MetricKey, number>;
 };
 
+// ~8 distinct, light-theme friendly hexes (Tailwind 600-ish tones). Movements
+// beyond the palette size cycle deterministically (no crash).
+const MOVEMENT_PALETTE = [
+  "#2563eb",
+  "#16a34a",
+  "#ea580c",
+  "#9333ea",
+  "#0891b2",
+  "#ca8a04",
+  "#dc2626",
+  "#059669",
+] as const;
+
+/** Ordinal label for the movement's order in the workout: "1st", "2nd", ... */
+const ordinalLabel = (position: number) => {
+  const mod100 = position % 100;
+  if (mod100 >= 11 && mod100 <= 13) return `${position}th`;
+  const suffixes = ["th", "st", "nd", "rd"] as const;
+  return `${position}${suffixes[position % 10] ?? "th"}`;
+};
+
 function MetricBarChart({
   rows,
   metricLabel,
+  movementColors,
   ariaLabel,
 }: {
-  rows: { movement: string; value: number }[];
+  rows: { ordinal: string; movementName: string; value: number }[];
   metricLabel: string;
+  movementColors: { movementName: string; color: string }[];
   ariaLabel: string;
 }): JSX.Element {
   return (
     <Chart
       definition={defineChart({
-        marks: [barX(rows, { y: "movement", x: "value" })],
+        marks: [
+          barX(rows, {
+            y: "ordinal",
+            x: "value",
+            // Color channel = movement name: identical color → movement
+            // mapping in all three charts, and it populates the legend.
+            color: "movementName",
+            inset: 12,
+            maxThickness: 48,
+          }),
+        ],
+        color: {
+          domain: movementColors.map(({ movementName }) => movementName),
+          range: movementColors.map(({ color }) => color),
+          legend: colorLegend({
+            placement: "bottom",
+            items: colorLegendItems({ indicator: { shape: "dot" } }),
+          }),
+        },
         scales: {
           x: {
             scale: scaleLinear,
@@ -67,10 +108,9 @@ function MetricBarChart({
             grid: true,
             axis: { label: metricLabel },
           },
-          y: {
-            scale: scaleBand,
-            axis: { ticks: { count: rows.length + 1 } },
-          },
+          // Category axis = movement order, so ticks render ordinals; the
+          // movement names live in the legend.
+          y: { scale: scaleBand },
         },
         tooltip,
       })}
@@ -118,21 +158,39 @@ function WorkoutHistoryPage() {
   const selectedDate = selectedWorkout?.completedAt
     ? dateFormat.format(new Date(selectedWorkout.completedAt))
     : "-";
-  // One summary per distinct movement in the selected workout, by name asc.
-  // The per-movement metric values are derived once and shared by the
-  // numbered blocks and the bar charts.
-  const movementSummaries: MovementSummary[] = (
-    Array.from(
-      new Map(
-        selectedWorkout?.sets.map((set) => [set.movement.id, set.movement.name]) ?? [],
-      ).entries(),
-    ).sort((a, b) => a[1].localeCompare(b[1]))
-  ).map(([movementId, movementName]) => ({
-    movementId,
+  // Distinct movements in order of appearance within the selected workout's
+  // sets (Map preserves insertion order). Charts use this order for ordinal
+  // bars and the deterministic palette; the numbers blocks keep the
+  // approved alphabetical order.
+  const appearanceOrder = Array.from(
+    new Map(
+      selectedWorkout?.sets.map((set) => [set.movement.id, set.movement.name]) ?? [],
+    ).entries(),
+  );
+  const valuesByMovement = new Map(
+    appearanceOrder.map(
+      ([movementId]): [string, Record<MetricKey, number>] => [
+        movementId,
+        Object.fromEntries(
+          METRICS.map(({ key }) => [key, metricValue(selectedWorkout!, movementId, key)]),
+        ) as Record<MetricKey, number>,
+      ],
+    ),
+  );
+  const movementSummaries: MovementSummary[] = appearanceOrder
+    .slice()
+    .sort((a, b) => a[1].localeCompare(b[1]))
+    .map(([movementId, movementName]) => ({
+      movementId,
+      movementName,
+      values: valuesByMovement.get(movementId)!,
+    }));
+  // Same movement ⇒ same color in all three charts and the legend (assigned
+  // by appearance order; cycles deterministically beyond the palette size).
+  const movementColors = appearanceOrder.map(([movementId, movementName], index) => ({
     movementName,
-    values: Object.fromEntries(
-      METRICS.map(({ key }) => [key, metricValue(selectedWorkout!, movementId, key)]),
-    ) as Record<MetricKey, number>,
+    color: MOVEMENT_PALETTE[index % MOVEMENT_PALETTE.length] as string,
+    movementId,
   }));
 
   return (
@@ -193,11 +251,13 @@ function WorkoutHistoryPage() {
                 {METRICS.map(({ key, label }) => (
                   <MetricBarChart
                     key={key}
-                    rows={movementSummaries.map((movement) => ({
-                      movement: movement.movementName,
-                      value: movement.values[key],
+                    rows={movementColors.map((movement, index) => ({
+                      ordinal: ordinalLabel(index + 1),
+                      movementName: movement.movementName,
+                      value: valuesByMovement.get(movement.movementId)![key],
                     }))}
                     metricLabel={label}
+                    movementColors={movementColors}
                     ariaLabel={`${selectedDate} — ${label} by movement`}
                   />
                 ))}
