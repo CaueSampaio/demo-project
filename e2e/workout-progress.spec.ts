@@ -70,14 +70,15 @@ test.describe("workout-history details", () => {
     // W3's single Alpha run appears in the resume as a per-run line.
     await expect(page.getByText(/1st: 140 lbs × 12/)).toBeVisible();
 
-    // Three charts, one per metric over the workout's SETS — accessible names
-    // carry the selected date, the metric label, and the "by set" granularity
-    // (W3 has one set, so the single-point series renders via the dot).
-    for (const label of ["Max Weight", "Total Reps", "Total Volume"]) {
-      await expect(
-        page.getByRole("img", { name: `${day(daysAgo(1))} — ${label} by set` }),
-      ).toBeVisible();
-    }
+    // ONE bubble chart for the whole workout: x = reps, y = weight, area =
+    // volume, colored per movement (W3's single set exercises the core case).
+    await expect(
+      page.getByRole("img", {
+        name: `${day(daysAgo(1))} — weight vs reps (area = volume)`,
+      }),
+    ).toBeVisible();
+    // The chart explains its third metric in a visible caption.
+    await expect(page.getByText(/Area = volume \(weight × reps\)/)).toBeVisible();
   });
 
   test("shows every movement of the selected workout with its three metrics", async ({ page }) => {
@@ -122,15 +123,13 @@ test.describe("workout-history details", () => {
     await expect(page.getByText(/1,200/)).toBeVisible();
 
     // The charts follow the selection: the W2 date replaces the W3 date in
-    // every chart's accessible name (chart internals are trusted to the lib).
-    for (const label of ["Max Weight", "Total Reps", "Total Volume"]) {
-      await expect(
-        page.getByRole("img", { name: `${day(daysAgo(2))} — ${label} by set` }),
-      ).toBeVisible();
-      await expect(
-        page.getByRole("img", { name: `${day(daysAgo(1))} — ${label} by set` }),
-      ).toHaveCount(0);
-    }
+    // the bubble chart's accessible name (chart internals are trusted to the lib).
+    await expect(
+      page.getByRole("img", { name: `${day(daysAgo(2))} — weight vs reps (area = volume)` }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("img", { name: `${day(daysAgo(1))} — weight vs reps (area = volume)` }),
+    ).toHaveCount(0);
   });
 
   test("ignores sets from active workouts", async ({ page }) => {

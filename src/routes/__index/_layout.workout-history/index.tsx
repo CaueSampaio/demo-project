@@ -7,8 +7,9 @@ import { Trash2 } from "lucide-react";
 import { workoutHistoryQueryOptions } from "./-queries/workout-history";
 import { useSuspenseQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { JSX } from "react";
-import { dot, defineChart, lineY } from "@tanstack/charts";
+import { dot, defineChart } from "@tanstack/charts";
 import { scaleLinear } from "@tanstack/charts/scales/linear";
+import { scaleSqrt } from "d3-scale";
 import { tooltip } from "@tanstack/charts/tooltip";
 import { Chart } from "@tanstack/charts/react";
 import { METRICS, metricSeries, type MetricKey } from "@/lib/metrics";
@@ -46,15 +47,17 @@ type MovementSummary = {
   values: Record<MetricKey, number>;
 };
 
-/** One chart point per SET: its 1-based position in the workout plus the
- * three per-set metrics (weight, reps, weight × reps). */
+/** One chart point per SET of the workout: reps (x), weight (y), and
+ * volume = weight × reps (the bubble's painted area). */
 type SetSample = {
-  setIndex: number;
+  reps: number;
+  weight: number;
+  volume: number;
   movementName: string;
-  maxWeight: number;
-  totalReps: number;
-  totalVolume: number;
 };
+
+/** Largest painted-bubble radius in pixels (area ∝ volume via scaleSqrt). */
+const MAX_BUBBLE_RADIUS = 22;
 
 // ~8 distinct, light-theme friendly hexes (Tailwind 600-ish tones). Movements
 // beyond the palette size cycle deterministically (no crash).
@@ -77,68 +80,64 @@ const ordinalLabel = (position: number) => {
   return `${position}${suffixes[position % 10] ?? "th"}`;
 };
 
-function MetricSetChart({
+function SetBubbleChart({
   samples,
-  metricLabel,
-  metricKey,
   movementColors,
   ariaLabel,
 }: {
   samples: SetSample[];
-  metricLabel: string;
-  metricKey: MetricKey;
   movementColors: { movementName: string; color: string }[];
   ariaLabel: string;
 }): JSX.Element {
-  const rows = samples.map((sample) => ({
-    setIndex: sample.setIndex,
-    movementName: sample.movementName,
-    value: sample[metricKey],
-  }));
-  // 1..N tick values keep every set position labeled (tick count would snap
-  // to scale candidates and hide the final position for small N).
-  const tickValues = rows.map((row) => row.setIndex);
+  // d3 scaleSqrt over [0, maxVolume] → [0, MAX_BUBBLE_RADIUS]: scaleSqrt maps
+  // radius = sqrt(volume normalized), so the PAINTED AREA of each bubble is
+  // proportional to that set's volume (weight × reps).
+  const maxVolume = Math.max(...samples.map((sample) => sample.volume), 1);
+  const radiusScale = scaleSqrt<number>()
+    .domain([0, maxVolume])
+    .range([0, MAX_BUBBLE_RADIUS]);
 
   return (
     <Chart
       definition={defineChart({
         marks: [
-          // One line + dots per MOVEMENT: repeated runs of the same movement
-          // connect into its own trajectory across the workout's sets.
-          // `lineY` renders nothing for a single-point series; the dot covers
-          // it (same caveat as the weight-chart recipe).
-          lineY(rows, { x: "setIndex", y: "value", color: "movementName" }),
-          dot(rows, { x: "setIndex", y: "value", color: "movementName" }),
+          // One bubble per SET. Points sharing identical (reps, weight)
+          // overlap exactly — accepted trade-off per the ADDENDUM 6 ruling
+          // (the run list in the resume enumerates those runs explicitly).
+          dot(samples, {
+            x: "reps",
+            y: "weight",
+            r: "volume",
+            rScale: radiusScale,
+            color: "movementName",
+            fillOpacity: 0.75,
+          }),
         ],
         // The per-movement color → label legend is rendered in-page (a single
-        // flex-wrap row above the chart stack, sharing this exact domain/
-        // range mapping) — in-chart colorLegend items collided when three
-        // ~300px charts sat side by side (repair of the ADDENDUM 5 defect).
+        // flex-wrap row above the chart, sharing this exact domain/range
+        // mapping) — in-chart colorLegend items collided when charts sat
+        // side by side (repair of the ADDENDUM 5 defect).
         color: {
           domain: movementColors.map(({ movementName }) => movementName),
           range: movementColors.map(({ color }) => color),
         },
         scales: {
-          // x = set sequence position within the workout; ticks show ordinals
-          // (movement names live in the legend, not on the category axis).
           x: {
             scale: scaleLinear,
             nice: true,
             grid: true,
-            axis: {
-              ticks: { values: tickValues, format: (value) => ordinalLabel(Number(value)) },
-            },
+            axis: { label: "Reps" },
           },
           y: {
             scale: scaleLinear,
             nice: true,
             grid: true,
-            axis: { label: metricLabel },
+            axis: { label: "Weight (lbs)" },
           },
         },
         tooltip,
       })}
-      height={180}
+      height={320}
       ariaLabel={ariaLabel}
     />
   );
@@ -185,14 +184,13 @@ function WorkoutHistoryPage() {
   // Charts consume `workout.sets` in NATURAL DB ORDER (no migration; the user
   // ruling explicitly relies on the row order the server fn returns — Postgres
   // does not guarantee it; if it ever proves flaky, the fix is a Set.createdAt
-  // migration, out of scope now). Each set becomes one point at its 1-based
-  // position in the workout, carrying all three per-set metrics.
-  const setSamples: SetSample[] = (selectedWorkout?.sets ?? []).map((set, index) => ({
-    setIndex: index + 1,
+  // migration, out of scope now). Each set becomes one bubble: reps on x,
+  // weight on y, volume = weight × reps as the bubble's painted area.
+  const setSamples: SetSample[] = (selectedWorkout?.sets ?? []).map((set) => ({
+    reps: set.reps,
+    weight: set.weight,
+    volume: set.weight * set.reps,
     movementName: set.movement.name,
-    maxWeight: set.weight,
-    totalReps: set.reps,
-    totalVolume: set.weight * set.reps,
   }));
   // Distinct movements in order of appearance (Map preserves insertion order)
   // drive the deterministic palette so a movement keeps the same color across
@@ -220,8 +218,9 @@ function WorkoutHistoryPage() {
       movementName,
       values: valuesByMovement.get(movementId)!,
     }));
-  // Same movement ⇒ same color in all three charts and the legend (assigned
-  // by appearance order; cycles deterministically beyond the palette size).
+  // Same movement ⇒ same color across the bubble chart and the legend
+  // (assigned by appearance order; cycles deterministically beyond the
+  // palette size).
   const movementColors = appearanceOrder.map(([movementId, movementName], index) => ({
     movementName,
     color: MOVEMENT_PALETTE[index % MOVEMENT_PALETTE.length] as string,
@@ -308,18 +307,17 @@ function WorkoutHistoryPage() {
                     </span>
                   ))}
                 </div>
-                {/* Full-width charts, stacked: each metric's trajectory gets
-                    room for every set position and its y-axis label. */}
-                {METRICS.map(({ key, label }) => (
-                  <MetricSetChart
-                    key={key}
-                    samples={setSamples}
-                    metricKey={key}
-                    metricLabel={label}
-                    movementColors={movementColors}
-                    ariaLabel={`${selectedDate} — ${label} by set`}
-                  />
-                ))}
+                {/* One bubble chart for the whole workout: x = reps, y =
+                    weight, area = volume (weight × reps), one bubble per set,
+                    colored per movement; the shared legend above names the
+                    colors. */}
+                <SetBubbleChart
+                  samples={setSamples}
+                  movementColors={movementColors}
+                  ariaLabel={`${selectedDate} — weight vs reps (area = volume)`}
+                />
+                {/* Visible encoding caption so the third metric is readable. */}
+                <p className="text-xs text-slate-500">Area = volume (weight × reps)</p>
               </div>
               {movementSummaries.map((movement) => (
                 <div key={movement.movementId} className="space-y-2">
