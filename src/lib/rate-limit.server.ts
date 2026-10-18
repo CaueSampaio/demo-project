@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getRequestIP } from "@tanstack/react-start/server";
 import { configService } from "./config.server";
+import { csrfMiddleware } from "./csrf.server";
 
 export type RateLimitBucket = "signIn" | "createAccount";
 
@@ -58,7 +59,9 @@ export function getClientIp(): string {
  * Dev/e2e-only hook that clears all rate-limit buckets. Throws when invoked
  * in a production environment so the limiter can never be disarmed there.
  */
-export const resetRateLimitsServerFn = createServerFn({ method: "POST" }).handler(() => {
+export const resetRateLimitsServerFn = createServerFn({ method: "POST" })
+  .middleware([csrfMiddleware])
+  .handler(() => {
   if (configService.getAppConfig().environment === "production") {
     throw new Error("Rate-limit reset is not available in production");
   }

@@ -42,12 +42,14 @@ The Docker setup uses volume mounts for hot reloading and ensures TypeScript typ
 - `src/components/ui/` - Reusable React components
 - `src/integrations/tanstack-query/` - TanStack Query setup and providers
 - `src/lib/` - Server-side domain logic and shared utilities:
-  - `auth.server.ts` + `auth.consts.ts` - Auth0-based authentication (server functions + auth middleware)
+  - `auth.server.ts` + `auth.consts.ts` - Credential-based authentication (argon2id password hashing, HMAC-signed session cookie) - server functions + auth middleware
+  - `password.server.ts` - Argon2id password hashing/verification helpers (`Bun.password`)
+  - `csrf.server.ts` - Origin-check CSRF middleware for mutating server functions
+  - `rate-limit.server.ts` - In-memory fixed-window rate limiting for auth endpoints
   - `config.server.ts` / `config.client.ts` - Runtime configuration for server and client
   - `db.server.ts` - Prisma client with the PostgreSQL driver adapter (`@prisma/adapter-pg`)
   - `movements.server.ts` - Movement server functions (list, create)
   - `workouts.server.ts` - Workout server functions (create, complete, sets, history, delete)
-  - `get-server-config.server.ts` - Server config exposed to the client at runtime
   - `types.ts` / `utils.ts` - Shared types and utilities
 - `e2e/` - Playwright end-to-end tests
 - `public/` - Static assets
@@ -127,15 +129,15 @@ This project uses a multi-layered approach to state management:
 
 Server-side logic lives in `src/lib/*.server.ts` as TanStack Start server functions (`createServerFn`):
 
-- **Auth** (`src/lib/auth.server.ts`): `getUserServerFn`, `signInServerFn`, `createAccountServerFn`, `logoutServerFn`, plus `authMiddleware` for protecting functions
+- **Auth** (`src/lib/auth.server.ts`): `getUserServerFn`, `signInServerFn`, `createAccountServerFn`, `logoutServerFn`, plus `authMiddleware` for protecting functions. Passwords are hashed with argon2id (`src/lib/password.server.ts`); every POST server fn attaches `csrfMiddleware` (`src/lib/csrf.server.ts`).
 - **Workouts** (`src/lib/workouts.server.ts`): `createWorkoutServerFn`, `getCurrentWorkoutServerFn`, `completeWorkoutServerFn`, `addSetServerFn`, `deleteSetServerFn`, `getWorkoutHistoryServerFn`, `deleteWorkoutsServerFn`
 - **Movements** (`src/lib/movements.server.ts`): `getMovementsServerFn`, `createMovementServerFn`
-- **Config** (`src/lib/get-server-config.server.ts`): `getServerConfigServerFn` exposes server config to the client at runtime
 
 Server functions access the database through `getServerSidePrismaClient()` from `src/lib/db.server.ts`, which reads `DATABASE_URL` from the server config.
 
 ## Docker Notes
 
 - Development container runs on port 3000 (published host port 3000 -> container 3000)
+- Dev boots Vite (and all server functions) under the Bun runtime: `CMD ["bun", "--bun", "vite", "dev", ...]` — Bun-only APIs like `Bun.password` work in dev, not just production
 - Uses user ID/group ID mapping for file permissions
 - Volume mounts ensure local development experience with Docker benefits

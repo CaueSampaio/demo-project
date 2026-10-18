@@ -125,9 +125,10 @@ export const signInServerFn = createServerFn({ method: "POST" })
       // Legacy plaintext row: compare directly, then lazily migrate.
       valid = constantTimeEqual(password, user.password);
     }
-    if (user && valid) {
+    if (user && valid && !isPasswordHash(user.password)) {
       // Lazy migration: rehash a legacy plaintext password to argon2id on
-      // successful sign-in.
+      // successful sign-in. Rows already stored as hashes are left untouched,
+      // so the update does not run on every successful sign-in.
       await prisma.user.update({
         where: { id: user.id },
         data: { password: await hashPassword(password) },
