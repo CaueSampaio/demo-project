@@ -21,6 +21,18 @@ function signUserId(userId: string): string {
 }
 
 /**
+ * Compares two strings in constant time. Both sides are hashed to a fixed
+ * length first so timingSafeEqual's same-length requirement is met without
+ * leaking length differences, and the digest equalizes the input so
+ * comparison time does not depend on the caller-supplied values.
+ */
+function constantTimeEqual(a: string, b: string): boolean {
+  const ha = crypto.createHash("sha256").update(a).digest();
+  const hb = crypto.createHash("sha256").update(b).digest();
+  return crypto.timingSafeEqual(ha, hb);
+}
+
+/**
  * Verifies a signed session token and returns the user ID if valid
  */
 function verifySessionToken(token: string): string | null {
@@ -28,7 +40,9 @@ function verifySessionToken(token: string): string | null {
   if (!userId || !signature) return null;
 
   const expectedSignature = crypto.createHmac("sha256", COOKIE_SECRET).update(userId).digest("hex");
-  if (signature !== expectedSignature) return null;
+  // Constant-time comparison: early-exit string equality would let an
+  // attacker recover the HMAC byte-by-byte via response timing.
+  if (!constantTimeEqual(signature, expectedSignature)) return null;
 
   return userId;
 }
@@ -41,6 +55,7 @@ function setSessionCookie(userId: string) {
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
   setCookie(sessionCookieName, token, {
+    path: "/",
     httpOnly: true,
     // Unified environment config: VITE_ENVIRONMENT is provisioned at build
     // and runtime (see Dockerfile); NODE_ENV is not reliable at runtime.
@@ -97,17 +112,16 @@ export const signInServerFn = createServerFn({ method: "POST" })
       // fails, locking that user out forever and blocking migration. Fall
       // back to a direct comparison; it can only match when the caller
       // already knows the exact stored value, so it does not weaken auth.
-      if (!valid && password === user.password) {
+      if (!valid && constantTimeEqual(password, user.password)) {
         valid = true;
       }
     } else if (user) {
       // Legacy plaintext row: compare directly, then lazily migrate.
-      valid = password === user.password;
+      valid = constantTimeEqual(password, user.password);
     }
     if (user && valid) {
       // Lazy migration: rehash a legacy plaintext password to argon2id on
-      // successful sign-in. (Task 5 swaps `===` above for a constant-time
-      // comparison.)
+      // successful sign-in.
       await prisma.user.update({
         where: { id: user.id },
         data: { password: await hashPassword(password) },
@@ -154,7 +168,9 @@ export const createAccountServerFn = createServerFn({ method: "POST" })
  * Logs out the current user
  */
 export const logoutServerFn = createServerFn({ method: "POST" }).handler(async () => {
-  deleteCookie(sessionCookieName);
+  // Match the attributes used when the cookie was set; browsers only accept
+  // a delete (expired cookie) whose path/domain mirror the original set.
+  deleteCookie(sessionCookieName, { path: "/" });
   return { success: true };
 });
 
