@@ -399,3 +399,22 @@ Expected: typecheck passes; full suite green.
 git add docs/security-audit-2026-10-18.md CLAUDE.md package.json bun.lock .github/
 git commit -m "docs: add security audit summary and correct auth docs"
 ```
+
+---
+
+### Task 0: Fix pre-existing typecheck errors (baseline, partner-directed)
+
+**Files:**
+- Modify: `src/routes/__index/_layout.workout-history/index.tsx` (13 implicit-`any`/`unknown` errors)
+- Modify: `src/routes/__index/_layout.profile/index.tsx:74` (1 implicit-`any` error) and any profile file it needs typing from
+
+**Interfaces:**
+- Consumes: existing `-queries` files (`current-workout.ts`, `movements.ts`, `profile.ts`) — prefer typing data on their return values over annotating the page inline where that is the source of the `unknown`.
+- Produces: `bun run typecheck` exits with **0 errors** repo-wide.
+
+**Rules:** Type-only fixes (annotations, generics, narrow types). NO behavior or JSX-structure changes, NO reformatting beyond touched lines — this is another workstream's in-progress code.
+
+- [ ] **Step 1:** Run `bun run typecheck` and record the current error list.
+- [ ] **Step 2:** Fix every reported error (the -queries layer gets real return types; pages get their inferred parameter types).
+- [ ] **Step 3:** Verify: `bun run typecheck` → 0 errors.
+- [ ] **Step 4:** Commit: `git add src/routes/__index/ && git commit -m "fix: type the workout-history and profile pages"`
