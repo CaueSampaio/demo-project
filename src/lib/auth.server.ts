@@ -7,6 +7,7 @@ import { sessionCookieName } from "./auth.consts";
 import { configService } from "./config.server";
 import { getServerSidePrismaClient } from "./db.server";
 import { hashPassword, isPasswordHash, verifyPassword } from "./password.server";
+import { checkRateLimit, getClientIp } from "./rate-limit.server";
 import { z } from "zod";
 
 // Single source of truth: the secret is resolved and fail-fast validated when
@@ -99,6 +100,9 @@ export const signInServerFn = createServerFn({ method: "POST" })
   .middleware([csrfMiddleware])
   .inputValidator(z.object({ email: z.string().email(), password: z.string().min(1).max(128) }))
   .handler(async ({ data }: { data: { email: string; password: string } }) => {
+    const rl = checkRateLimit("signIn", getClientIp());
+    if (!rl.allowed) return { success: false as const, error: "Too many attempts. Try again shortly." };
+
     const { email, password } = data;
 
     const prisma = await getServerSidePrismaClient();
@@ -146,6 +150,9 @@ export const createAccountServerFn = createServerFn({ method: "POST" })
   .middleware([csrfMiddleware])
   .inputValidator(z.object({ email: z.email(), name: z.string().min(1), password: z.string().min(6).max(128) }))
   .handler(async ({ data }: { data: { email: string; name: string; password: string } }) => {
+    const rl = checkRateLimit("createAccount", getClientIp());
+    if (!rl.allowed) return { success: false as const, error: "Too many attempts. Try again shortly." };
+
     const { email, name, password } = data;
 
     const prisma = await getServerSidePrismaClient();
