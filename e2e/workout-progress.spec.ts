@@ -13,14 +13,14 @@ test.beforeEach(async () => {
   userId = user.id;
 });
 
-test.describe("workout-history progress chart", () => {
+test.describe("workout-history details", () => {
   test.beforeEach(async ({ page }) => {
     await page.context().addCookies(sessionCookieFor(userId));
 
     // Deterministic history: Alpha Bench and Zulu Squat (alphabetical => Alpha first).
     // W1 (3d): Alpha 135x10, 145x8 (max 145 / reps 18 / volume 2510); Zulu 225x5
-    // W2 (2d): Alpha 150x6; Zulu 240x5
-    // W3 (1d): Alpha 140x12
+    // W2 (2d): Alpha 150x6 (volume 900); Zulu 240x5 (volume 1200)
+    // W3 (1d): Alpha 140x12 (volume 1680)
     await seedCompletedWorkout(userId, {
       daysAgo: 3,
       sets: [
@@ -42,67 +42,67 @@ test.describe("workout-history progress chart", () => {
     });
   });
 
-  test("shows movement and metric selectors with seeded movements", async ({ page }) => {
+  test("selects the most recent workout by default and shows its movements", async ({ page }) => {
     await page.goto("/workout-history");
     await waitForHydration(page);
 
-    await expect(page.getByRole("heading", { name: "Workout History" })).toBeVisible();
+    // The most recent workout (W3) is the only one pressed.
+    const mostRecent = page.getByRole("button", { name: `Select workout ${day(daysAgo(1))}` });
+    await expect(mostRecent).toHaveAttribute("aria-pressed", "true");
+    for (const older of [day(daysAgo(3)), day(daysAgo(2))]) {
+      await expect(page.getByRole("button", { name: `Select workout ${older}` })).toHaveAttribute(
+        "aria-pressed",
+        "false",
+      );
+    }
+    await expect(page.locator('[aria-pressed="true"]')).toHaveCount(1);
 
-    await expect(page.getByLabel("Movement")).toHaveValue(/./); // renders as a select
-    const movementOptions = await page.getByLabel("Movement").locator("option").allTextContents();
-    expect(movementOptions).toContain("Alpha Bench");
-    expect(movementOptions).toContain("Zulu Squat");
-    // alphabetical => Alpha Bench is the default selection
-    await expect(page.getByLabel("Movement")).toHaveValue(
-      (await page.getByLabel("Movement").locator("option").filter({ hasText: "Alpha Bench" }).getAttribute("value"))!,
-    );
-
-    const metricOptions = await page.getByLabel("Metric").locator("option").allTextContents();
-    expect(metricOptions).toEqual(["Max Weight", "Total Reps", "Total Volume"]);
+    // Details card: the selected workout's date as its title, W3's Alpha numbers.
+    await expect(page.getByRole("heading", { name: day(daysAgo(1)) })).toBeVisible();
+    await expect(page.getByText("Alpha Bench")).toBeVisible();
+    await expect(page.getByText(/140\s+lbs/)).toBeVisible();
+    await expect(page.getByText(/12\s+reps/)).toBeVisible();
+    await expect(page.getByText(/1,680/)).toBeVisible();
   });
 
-  test("renders one dot per completed workout for the selected movement", async ({ page }) => {
+  test("shows every movement of the selected workout with its three metrics", async ({ page }) => {
     await page.goto("/workout-history");
     await waitForHydration(page);
 
-    const chart = page.getByRole("img", { name: "Alpha Bench — Max Weight over time" });
-    await expect(chart.locator("circle")).toHaveCount(3);
+    await page.getByRole("button", { name: `Select workout ${day(daysAgo(3))}` }).click();
 
-    await page.getByLabel("Movement").selectOption({ label: "Zulu Squat" });
-    const zuluChart = page.getByRole("img", { name: "Zulu Squat — Max Weight over time" });
-    await expect(zuluChart.locator("circle")).toHaveCount(2);
+    // W1 contains both movements, each with its three metrics from that workout only.
+    await expect(page.getByText("Alpha Bench")).toBeVisible();
+    await expect(page.getByText(/145\s+lbs/)).toBeVisible();
+    await expect(page.getByText(/18\s+reps/)).toBeVisible();
+    await expect(page.getByText(/2,510/)).toBeVisible();
+
+    await expect(page.getByText("Zulu Squat")).toBeVisible();
+    await expect(page.getByText(/225\s+lbs/)).toBeVisible();
+    await expect(page.getByText(/5\s+reps/)).toBeVisible();
+    await expect(page.getByText(/1,125/)).toBeVisible();
   });
 
-  test("plots max weight in chronological order", async ({ page }) => {
+  test("switching workout updates the details", async ({ page }) => {
     await page.goto("/workout-history");
     await waitForHydration(page);
 
-    const chart = page.getByRole("img", { name: "Alpha Bench — Max Weight over time" });
-    // data dots get a duplicate in the focus layer that intercepts locator
-    // hovers, so move the real mouse to the first (oldest) dot instead
-    const first = await chart.locator("circle").first().boundingBox();
-    await page.mouse.move(first!.x + first!.width / 2, first!.y + first!.height / 2);
-    // first circle = oldest workout (W1): max of 135x10 and 145x8 => 145
-    await expect(chart.locator("..")).toHaveText(/145\b/);
-  });
+    // Start from the default (W3), then switch to W2.
+    await page.getByRole("button", { name: `Select workout ${day(daysAgo(2))}` }).click();
+    await expect(page.getByRole("heading", { name: day(daysAgo(2)) })).toBeVisible();
+    await expect(page.getByText("Alpha Bench")).toBeVisible();
+    await expect(page.getByText(/150\s+lbs/)).toBeVisible();
+    await expect(page.getByText(/6\s+reps/)).toBeVisible();
+    await expect(page.getByText(/900/)).toBeVisible();
 
-  test("plots total volume as sum of weight times reps", async ({ page }) => {
-    await page.goto("/workout-history");
-    await waitForHydration(page);
-
-    await page.getByLabel("Metric").selectOption({ label: "Total Volume" });
-    const chart = page.getByRole("img", { name: "Alpha Bench — Total Volume over time" });
-    // focus-layer duplicate intercepts locator hovers; move the mouse instead
-    const first = await chart.locator("circle").first().boundingBox();
-    await page.mouse.move(first!.x + first!.width / 2, first!.y + first!.height / 2);
-    // first circle = W1: 135*10 + 145*8 = 2510 (maxWeight*totalReps would be 2610);
-    // the default tooltip groups thousands ("2,510"), hence the optional comma
-    await expect(chart.locator("..")).toHaveText(/2,?510\b/);
+    await expect(page.getByText("Zulu Squat")).toBeVisible();
+    await expect(page.getByText(/240\s+lbs/)).toBeVisible();
+    await expect(page.getByText(/1,200/)).toBeVisible();
   });
 
   test("ignores sets from active workouts", async ({ page }) => {
-    // an active (not yet completed) workout with an Alpha Bench set must not
-    // leak into the history selectors or the chart
+    // An active (not yet completed) workout with an Alpha Bench set must not
+    // leak into the workout picker or the details.
     const active = await testPrisma.workout.create({ data: { userId } });
     const bench = await testPrisma.movement.findFirstOrThrow({ where: { name: "Alpha Bench" } });
     await testPrisma.set.create({
@@ -112,21 +112,33 @@ test.describe("workout-history progress chart", () => {
     await page.goto("/workout-history");
     await waitForHydration(page);
 
-    const movementOptions = await page.getByLabel("Movement").locator("option").allTextContents();
-    expect(movementOptions).toEqual(["Alpha Bench", "Zulu Squat"]);
-
-    const chart = page.getByRole("img", { name: "Alpha Bench — Max Weight over time" });
-    await expect(chart.locator("circle")).toHaveCount(3);
+    // Picker lists only the 3 completed workout dates.
+    await expect(page.getByRole("button", { name: /Select workout/ })).toHaveCount(3);
+    // Details still show W3's Alpha numbers (not the active workout's 999 lbs set).
+    await expect(page.getByText(/140\s+lbs/)).toBeVisible();
+    await expect(page.getByText(/999\s+lbs/)).toHaveCount(0);
   });
 
-  test("deletes a workout from the list and updates the chart", async ({ page }) => {
+  test("deletes a workout from the list and updates the details", async ({ page }) => {
     await page.goto("/workout-history");
     await waitForHydration(page);
 
+    // Select W2 first (not the default), then delete it.
+    await page.getByRole("button", { name: `Select workout ${day(daysAgo(2))}` }).click();
+    await expect(page.getByText(/150\s+lbs/)).toBeVisible();
+
     await page.getByRole("button", { name: `Delete workout ${day(daysAgo(2))}` }).click();
 
-    const chart = page.getByRole("img", { name: "Alpha Bench — Max Weight over time" });
-    await expect(chart.locator("circle")).toHaveCount(2);
+    // The deleted workout's numbers are gone from the details (guards query invalidation).
+    await expect(page.getByText(/150\s+lbs/)).toHaveCount(0);
+
+    // Picker shrank to the 2 remaining workouts; selection fell back to the
+    // most recent remaining one (W3).
+    await expect(page.getByRole("button", { name: /Select workout/ })).toHaveCount(2);
+    await expect(page.getByRole("button", { name: `Select workout ${day(daysAgo(1))}` })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
 
     expect(await testPrisma.workout.count({ where: { userId } })).toBe(2);
     expect(
