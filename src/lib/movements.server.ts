@@ -3,11 +3,11 @@ import { getServerSidePrismaClient } from "@/lib/db.server";
 import { z } from "zod";
 
 export const createMovementServerFn = createServerFn({ method: "POST" })
-  .inputValidator(z.object({ name: z.string().min(1) }))
-  .handler(async ({ data }: { data: { name: string } }) => {
+  .inputValidator(z.object({ name: z.string().min(1), isBodyweight: z.boolean().default(false) }))
+  .handler(async ({ data }: { data: { name: string; isBodyweight: boolean } }) => {
     const prisma = await getServerSidePrismaClient();
     const movement = await prisma.movement.create({
-      data: { name: data.name },
+      data: { name: data.name, isBodyweight: data.isBodyweight },
     });
     return { success: true, movement };
   });
