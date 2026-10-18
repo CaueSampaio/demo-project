@@ -2,10 +2,19 @@ import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
 import { deleteWorkoutsServerFn } from "@/lib/workouts.server";
 import { Trash2 } from "lucide-react";
 import { workoutHistoryQueryOptions } from "./-queries/workout-history";
 import { useSuspenseQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { METRICS, metricSeries, type MetricKey } from "@/lib/metrics";
+import { MetricChart } from "@/components/progress-chart";
+
+const dateFormat = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+});
 
 export const Route = createFileRoute("/__index/_layout/workout-history/")({
   loader: async ({ context }) => {
@@ -17,45 +26,44 @@ export const Route = createFileRoute("/__index/_layout/workout-history/")({
 function WorkoutHistoryPage() {
   const queryClient = useQueryClient();
   const { data: workouts } = useSuspenseQuery(workoutHistoryQueryOptions());
-  const [selectedWorkouts, setSelectedWorkouts] = useState<Set<string>>(new Set());
 
   const deleteWorkoutsMutation = useMutation({
     mutationFn: (workoutIds: string[]) => deleteWorkoutsServerFn({ data: { workoutIds } }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: workoutHistoryQueryOptions().queryKey });
-      setSelectedWorkouts(new Set());
     },
   });
 
-  // Get all unique movements across all workouts
+  // Get all unique movements across all completed workouts
   const uniqueMovements = Array.from(
     new Map(workouts.flatMap((w) => w.sets.map((s) => [s.movement.id, s.movement.name]))).entries(),
   ).sort((a, b) => a[1].localeCompare(b[1]));
 
-  const toggleWorkout = (id: string) => {
-    setSelectedWorkouts((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  };
+  const [movementIdSelection, setMovementIdSelection] = useState<string | null>(null);
+  const [metric, setMetric] = useState<MetricKey>("maxWeight");
 
-  const toggleAll = () => {
-    if (selectedWorkouts.size === workouts.length) {
-      setSelectedWorkouts(new Set());
-    } else {
-      setSelectedWorkouts(new Set(workouts.map((w) => w.id)));
-    }
-  };
+  // Default to the (alphabetically) first movement; fall back to it whenever the
+  // persisted selection disappears (e.g. its last workout was deleted).
+  const selectedMovementId =
+    movementIdSelection && uniqueMovements.some(([id]) => id === movementIdSelection)
+      ? movementIdSelection
+      : uniqueMovements[0]?.[0];
+  const selectedMovementName = uniqueMovements.find(([id]) => id === selectedMovementId)?.[1];
 
-  const handleDeleteSelected = () => {
-    if (selectedWorkouts.size === 0) return;
-    deleteWorkoutsMutation.mutate(Array.from(selectedWorkouts));
-  };
+  if (workouts.length === 0) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-semibold text-slate-900">Workout History</h1>
+        </div>
+        <Card>
+          <CardContent>
+            <p className="text-sm text-slate-500">No completed workouts yet.</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -64,99 +72,81 @@ function WorkoutHistoryPage() {
       </div>
 
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
+        <CardHeader>
+          <CardTitle>Progress</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap gap-4">
+            <div className="min-w-48 flex-1">
+              <label className="sr-only" htmlFor="movement-select">
+                Movement
+              </label>
+              <Select
+                aria-label="Movement"
+                id="movement-select"
+                value={selectedMovementId}
+                onChange={(event) => setMovementIdSelection(event.target.value)}>
+                {uniqueMovements.map(([id, name]) => (
+                  <option key={id} value={id}>
+                    {name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div className="min-w-48 flex-1">
+              <label className="sr-only" htmlFor="metric-select">
+                Metric
+              </label>
+              <Select
+                aria-label="Metric"
+                id="metric-select"
+                value={metric}
+                onChange={(event) => setMetric(event.target.value as MetricKey)}>
+                {METRICS.map(({ key, label }) => (
+                  <option key={key} value={key}>
+                    {label}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          </div>
+          {selectedMovementId && selectedMovementName && (
+            <div className="mt-4">
+              <MetricChart
+                points={metricSeries(workouts, selectedMovementId, metric)}
+                yLabel={METRICS.find((m) => m.key === metric)?.label ?? metric}
+                ariaLabel={`${selectedMovementName} — ${METRICS.find((m) => m.key === metric)?.label} over time`}
+              />
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>Completed Workouts</CardTitle>
-          <Button
-            size="sm"
-            variant="destructive"
-            onClick={handleDeleteSelected}
-            disabled={selectedWorkouts.size === 0}>
-            <Trash2 className="w-4 h-4 mr-2" />
-            {deleteWorkoutsMutation.isPending ? "Deleting..." : `Delete Selected (${selectedWorkouts.size})`}
-          </Button>
         </CardHeader>
         <CardContent>
           {workouts.length === 0 ? (
             <p className="text-sm text-slate-500">No completed workouts yet.</p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-slate-200">
-                    <th className="py-3 px-4">
-                      <input
-                        type="checkbox"
-                        checked={selectedWorkouts.size === workouts.length}
-                        onChange={toggleAll}
-                        className="rounded border-gray-300"
-                      />
-                    </th>
-                    <th className="text-left py-3 px-4 font-medium text-slate-600">Date</th>
-                    <th className="text-right py-3 px-4 font-medium text-slate-600">Sets</th>
-                    {uniqueMovements.map(([id, name]) => (
-                      <th key={id} className="text-right py-3 px-4 font-medium text-slate-600">
-                        {name}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {workouts.map((workout) => {
-                    const setsByMovement = new Map<string, typeof workout.sets>();
-                    workout.sets.forEach((set) => {
-                      const existing = setsByMovement.get(set.movement.id) || [];
-                      setsByMovement.set(set.movement.id, [...existing, set]);
-                    });
-
-                    const isSelected = selectedWorkouts.has(workout.id);
-                    return (
-                      <tr
-                        key={workout.id}
-                        className={`border-b border-slate-100 ${isSelected ? "bg-primary/10" : "hover:bg-slate-50"}`}>
-                        <td className="py-3 px-4">
-                          <input
-                            type="checkbox"
-                            checked={selectedWorkouts.has(workout.id)}
-                            onChange={() => toggleWorkout(workout.id)}
-                            className="rounded border-gray-300"
-                          />
-                        </td>
-                        <td className="py-3 px-4 text-slate-500">
-                          {workout.completedAt
-                            ? new Date(workout.completedAt).toLocaleDateString("en-US", {
-                                month: "short",
-                                day: "numeric",
-                                year: "numeric",
-                              })
-                            : "-"}
-                        </td>
-                        <td className="py-3 px-4 text-right text-slate-600">{workout.sets.length}</td>
-                        {uniqueMovements.map(([movementId]) => {
-                          const movementSets = setsByMovement.get(movementId);
-                          if (!movementSets || movementSets.length === 0) {
-                            return (
-                              <td key={movementId} className="py-3 px-4 text-right text-slate-300">
-                                -
-                              </td>
-                            );
-                          }
-                          const maxWeight = Math.max(...movementSets.map((s) => s.weight));
-                          const avgReps = Math.round(
-                            movementSets.reduce((sum, s) => sum + s.reps, 0) / movementSets.length,
-                          );
-                          const numSets = movementSets.length;
-                          return (
-                            <td key={movementId} className="py-3 px-4 text-right text-slate-600">
-                              {maxWeight} lbs / {avgReps} reps / {numSets} sets
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <ul className="divide-y divide-slate-100">
+              {workouts.map((workout) => (
+                <li key={workout.id} className="flex items-center justify-between py-3">
+                  <span className="text-sm text-slate-500">
+                    {workout.completedAt ? dateFormat.format(new Date(workout.completedAt)) : "-"}
+                  </span>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    aria-label={`Delete workout ${workout.completedAt ? dateFormat.format(new Date(workout.completedAt)) : "-"}`}
+                    disabled={deleteWorkoutsMutation.isPending}
+                    onClick={() => deleteWorkoutsMutation.mutate([workout.id])}>
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </li>
+              ))}
+            </ul>
           )}
         </CardContent>
       </Card>
