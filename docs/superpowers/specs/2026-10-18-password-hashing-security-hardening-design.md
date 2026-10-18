@@ -1,7 +1,7 @@
 # Password Hashing & Security Hardening — Design
 
 **Date:** 2026-10-18
-**Status:** Draft — pending builder check
+**Status:** Approved — builder check passed, partner answers incorporated (2026-10-18)
 **Source:** `prompts/security-fix.md` + read-only security recon of this repo (2026-10-18)
 
 ## Why
@@ -72,6 +72,8 @@ security-audit summary documenting residual risk. Scope was confirmed with the h
   no `webServer` in `playwright.config.ts`) — keep that pattern.
 - **Runtime caution:** the e2e helpers (`e2e/helpers/auth.ts`) execute inside the Playwright
   runner (Node), where `Bun.password` is unavailable. Do not depend on Bun-only APIs there.
+  The app server itself runs under Bun in both dev and prod once the dev-boot fix above lands —
+  the caution applies only to the Playwright runner process.
   Prefer creating test users through the real sign-up flow (UI or HTTP call to the server
   function) so the hashing path is exercised end-to-end; direct-DB inserts stay acceptable only
   for plaintext-legacy fixtures (which need no hashing).
@@ -89,9 +91,12 @@ security-audit summary documenting residual risk. Scope was confirmed with the h
 | Prisma field | Rename `password` → `passwordHash`, stays `TEXT`, column-rename migration |
 | Rate limits | In-memory fixed window per IP: sign-in ~5/min, create-account ~3/min (exact numbers tunable) |
 | CSRF | Origin-check middleware on mutating server fns; keep `sameSite=lax`; `/logout` → POST form |
-| Session | `timingSafeEqual` compare; `path: "/"`; new token per sign-in; logout deletes with matching attrs |
+| Session | `timingSafeEqual` compare; `path: "/"`; re-set cookie with fresh 7-day expiry on sign-in — **no token-format change** (deterministic HMAC stays; rotation-by-nonce only makes sense with the future revocation store); logout deletes with matching attrs |
 | Docker | `USER appuser` in production stage; strip dead `${VITE_AUTH0_*}` / documentParser keys from `public/config.js` |
 | Docs | Correct `CLAUDE.md` auth description (credential-based, not Auth0); remove unused `@auth0/auth0-react` dependency |
+| Dev runtime | Dev stack boots Vite under Bun (`bun --bun vite dev` in the Dockerfile dev CMD / dev script) so `Bun.password` exists in dev; implementer verifies this early and escalates if Bun-under-Vite proves incompatible |
+| Deployments | Dev-only (partner-confirmed): no non-dev instance with user rows; column-rename migration needs no deploy coordination |
+| Dead runtime-config mechanism | Delete `public/config.js` and its `<script>` include in `__root.tsx`; rely on build-time `VITE_ENVIRONMENT` via `config.client.ts` fallback (mechanism never worked — see Finding 14) |
 | Security headers / CSP | Future work (documented) |
 
 ## What is left to the builder
@@ -133,8 +138,10 @@ security-audit summary documenting residual risk. Scope was confirmed with the h
 11. `src/routes/logout.tsx`: GET page-load logout (logout-CSRF-prone) → POST form.
 12. Cookie delete in logout may not match set-attributes (verify `path`).
 13. `Dockerfile`: `appuser` created (L7–9) but **no `USER` directive** anywhere.
-14. `public/config.js` L6–9: dead Auth0/documentParser `${...}` template placeholders; entry.sh
-    never substitutes them.
+14. `public/config.js`: the entire runtime-config mechanism is dead — `entry.sh` never calls
+    `envsubst`, so even `${VITE_ENVIRONMENT}` ships as a literal string (truthy, so
+    `config.client.ts`'s import.meta.env fallback never fires); Auth0/documentParser keys are
+    also dead. Resolution: delete the mechanism (see Decisions).
 15. `CLAUDE.md` L45: says "Auth0-based authentication" — stale; code is credential-based;
     `@auth0/auth0-react` unused in `package.json`.
 16. `e2e/helpers/auth.ts`: `createTestUser` inserts plaintext user; session forging
@@ -161,3 +168,5 @@ security-audit summary documenting residual risk. Scope was confirmed with the h
   logout, legacy-row lazy migration. Full suite passes; `bun run typecheck` passes.
 - `docs/security-audit-2026-10-18.md` written (findings, fixes, residual risks incl. future work).
 - `CLAUDE.md` auth section corrected.
+- Dev stack boots under Bun so `Bun.password` is available in every environment (dev, prod, e2e).
+- No dead runtime-config remnants: `public/config.js` removed, `window.APP_CONFIG` references gone.
