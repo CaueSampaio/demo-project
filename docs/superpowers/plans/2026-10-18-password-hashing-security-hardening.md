@@ -103,51 +103,35 @@ git add src/routes/sign-in.tsx src/routes/create-account.tsx
 git commit -m "fix: remove direct password disclosure paths"
 ```
 
-### Task 3: Prisma rename + hash on sign-up, verify (+lazy migrate) on sign-in
+### Task 3: Hash on sign-up, verify (+lazy migrate) on sign-in
 
 **Files:**
-- Modify: `prisma/schema.prisma:10-19` — `User.password` → `User.passwordHash` (`String`, unchanged rest)
-- Create: `prisma/migrations/<timestamp>_rename_user_password_to_password_hash/migration.sql`
 - Modify: `src/lib/auth.server.ts` (sign-in, sign-up, getUser; imports)
-- Modify: `e2e/helpers/auth.ts` — `createTestUser` inserts `passwordHash: E2E_TEST_PASSWORD_HASH` instead of plaintext `password`
+- Modify: `e2e/helpers/auth.ts` — `createTestUser` inserts `password: E2E_TEST_PASSWORD_HASH` instead of plaintext `password`
 
 **Interfaces:**
 - Consumes: `hashPassword`, `verifyPassword`, `isPasswordHash` from `./password.server` (Task 1).
 - Produces:
   - `export const E2E_TEST_PASSWORD_HASH = "$argon2id$v=19$m=65536,t=2,p=1$5BE8E974lmIJ/giXJ3V8tq6/WBr7x5E4CWRbShve+cE$AKtw6jCqwG//EI70+DQlS9OXIXHIP/NZuBIOXxs8OZQ"` in `e2e/helpers/auth.ts` (argon2id of `"e2test-password"`); `createTestUser(password = "e2test-password")` keeps its signature but `throw new Error("custom passwords unsupported — use the sign-up UI flow")` when `password !== "e2test-password"`; update its callers if they pass custom passwords.
-  - `User.passwordHash` in Prisma; `getUserServerFn` returns `{ id, email, name, createdAt } | null` (no password fields).
+  - `getUserServerFn` returns `{ id, email, name, createdAt } | null` (no password fields).
 
-- [ ] **Step 1: Edit schema.prisma** — rename the field to `passwordHash` (the model's only change).
-- [ ] **Step 2: Create the migration with dev DB up** (`bun run dev` stack running, or `DATABASE_URL` to a local Postgres)
-
-Run: `bunx prisma migrate dev --create-only --name rename_user_password_to_password_hash`
-Edit the generated `migration.sql` to contain exactly:
-
-```sql
--- Prisma generates DROP+ADD for unknown renames; replace with a true rename:
-ALTER TABLE "User" RENAME COLUMN "password" TO "passwordHash";
-```
-
-Run: `bunx prisma migrate dev && bun run generate`
-Expected: migration applied; client regenerated with `passwordHash`.
-
-- [ ] **Step 3: Rewire `src/lib/auth.server.ts`**
+- [ ] **Step 1: Rewire `src/lib/auth.server.ts`**
 
 - `import { hashPassword, isPasswordHash, verifyPassword } from "./password.server";`
-- `signInServerFn` handler: look up user by email; valid = if user exists and `isPasswordHash(user.passwordHash)` → `await verifyPassword(password, user.passwordHash)`; else if user exists (legacy plaintext) → `password === user.passwordHash` via the constant-time compare added in Task 5 (`constantTimeEqual`, plain `===` acceptable for now, Task 5 replaces it); on legacy success: `await prisma.user.update({ where: { id: user.id }, data: { passwordHash: await hashPassword(password) } })`. If `!user || !valid` → return `{ success: false as const, error: "Invalid email or password" }`; then `setSessionCookie(user.id)`, return success.
-- `createAccountServerFn`: `data: { email, name, passwordHash: await hashPassword(password) }`; zod password becomes `z.string().min(6).max(128)`; signIn zod password becomes `z.string().min(1).max(128)`.
+- `signInServerFn` handler: look up user by email; valid = if user exists and `isPasswordHash(user.password)` → `await verifyPassword(password, user.password)`; else if user exists (legacy plaintext) → `password === user.password` via the constant-time compare added in Task 5 (`constantTimeEqual`, plain `===` acceptable for now, Task 5 replaces it); on legacy success: `await prisma.user.update({ where: { id: user.id }, data: { password: await hashPassword(password) } })`. If `!user || !valid` → return `{ success: false as const, error: "Invalid email or password" }`; then `setSessionCookie(user.id)`, return success.
+- `createAccountServerFn`: `data: { email, name, password: await hashPassword(password) }`; zod password becomes `z.string().min(6).max(128)`; signIn zod password becomes `z.string().min(1).max(128)`.
 - `getUserServerFn`: `prisma.user.findUnique({ where: { id: userId }, select: { id: true, email: true, name: true, createdAt: true } })`.
 
-- [ ] **Step 4: Update `e2e/helpers/auth.ts`** — add `E2E_TEST_PASSWORD_HASH` const (exact string above), insert `passwordHash: E2E_TEST_PASSWORD_HASH`, add the custom-password throw.
-- [ ] **Step 5: Verify**
+- [ ] **Step 2: Update `e2e/helpers/auth.ts`** — add `E2E_TEST_PASSWORD_HASH` const (exact string above), insert `password: E2E_TEST_PASSWORD_HASH`, add the custom-password throw.
+- [ ] **Step 3: Verify**
 
-Run: `grep -rn "passwordHash\|\.password\b" src/ e2e/ --include="*.ts*" | grep -v passwordHash | grep -v "\.password\b" ; bun run typecheck`
-Expected: typecheck passes; no remaining `password: true` selects or plaintext inserts.
+Run: `grep -rn "password: true" src/ e2e/ ; bun run typecheck`
+Expected: grep finds nothing; typecheck passes; no remaining `password: true` selects or plaintext inserts.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
-git add prisma/schema.prisma prisma/migrations src/lib/auth.server.ts e2e/helpers/auth.ts
+git add src/lib/auth.server.ts e2e/helpers/auth.ts
 git commit -m "feat: hash passwords in sign-up and sign-in flows"
 ```
 
@@ -195,7 +179,7 @@ function constantTimeEqual(a: string, b: string): boolean {
 }
 ```
 
-Replace the legacy branch's `===` from Task 3 with `constantTimeEqual(password, user.passwordHash)`. Add `path: "/"` to the `setCookie` options object (L42–51). Update `logoutServerFn` to `deleteCookie(sessionCookieName, { path: "/" })` (same attributes as set, minus value/expiry).
+Replace the legacy branch's `===` from Task 3 with `constantTimeEqual(password, user.password)`. Add `path: "/"` to the `setCookie` options object (L42–51). Update `logoutServerFn` to `deleteCookie(sessionCookieName, { path: "/" })` (same attributes as set, minus value/expiry).
 
 - [ ] **Step 2: Verify**
 
@@ -363,10 +347,10 @@ git commit -m "fix: run dev under bun and drop root in production image"
 
 - [ ] **Step 1: Write `e2e/auth.spec.ts`** with `test.beforeEach` POSTing `${baseURL}/api/dev-reset-rate-limits` (expect 200) and using a unique `user+Date.now()@e2e.test` per test. Tests, with exact assertions:
 
-1. `sign-up stores an argon2id hash, never the plaintext` (**encrypt use case — mandatory**) — UI `/create-account` with email/name/password → sign-in screen or app reached; `testPrisma.user.findUnique` on the email → `expect(user.passwordHash).toMatch(/^\$argon2id\$/)` and `expect(user.passwordHash).not.toBe(password)`.
+1. `sign-up stores an argon2id hash, never the plaintext` (**encrypt use case — mandatory**) — UI `/create-account` with email/name/password → sign-in screen or app reached; `testPrisma.user.findUnique` on the email → `expect(user.password).toMatch(/^\$argon2id\$/)` and `expect(user.password).not.toBe(password)`.
 2. `sign-in accepts the correct password` (**verify use case — mandatory**) — `createTestUser({ email })` → UI `/sign-in` with `"e2test-password"` → app content visible (redirected off `/sign-in`).
 3. `sign-in rejects a wrong password with a generic error` — wrong password → `"Invalid email or password"` visible; still on `/sign-in`.
-4. `legacy plaintext row is lazily migrated on sign-in` — `testPrisma.user.create` with `passwordHash: "legacy-plaintext"` → UI sign-in succeeds → DB row `passwordHash` matches `/^\$argon2id\$/`.
+4. `legacy plaintext row is lazily migrated on sign-in` — `testPrisma.user.create` with `password: "legacy-plaintext"` → UI sign-in succeeds → DB row `password` matches `/^\$argon2id\$/`.
 5. `password with special characters round-trips` — sign-up with `P@$$w0rd é🎉 & $ymbols` → logout → sign-in OK.
 6. `6th sign-in attempt in a minute is rate limited` — reset → 6 UI sign-in attempts (wrong password, same email) → attempt 6 shows `"Too many attempts. Try again shortly."` (allow it from attempt 6 onward, not earlier).
 7. `cross-origin POST is rejected` — `page.route("**/*", route => route.continue({ headers: { ...route.request().headers(), origin: "https://evil.example" } }))` → UI sign-in attempt fails (error visible / no navigation into app) and `context.cookies()` contains no `session` cookie.
@@ -402,7 +386,7 @@ git commit -m "test: add e2e auth coverage for hashing, verification and hardeni
 - Consumes: spec design doc (findings inventory, non-goals).
 - Produces: the DoD's "bigger picture" deliverable.
 
-- [ ] **Step 1: Write `docs/security-audit-2026-10-18.md`** with exactly these sections: (1) *Findings & resolutions* — table of the 18 findings from the spec with status (fixed in this pass, with commit/task reference); (2) *Deferred / future work* — session revocation store, Redis-backed rate limiting, security headers (CSP/HSTS/X-Frame-Options), anti-enumeration on create-account, account lockout/MFA, CI plumbing cleanup; (3) *Deployment notes* — DB is dev-only (partner-confirmed 2026-10-18), column rename needs no deploy coordination, `.env` remains git-tracked with dev-only values (fragile pattern — flag it); (4) *Verification evidence* — paste `bun run typecheck` and full Playwright suite summary output.
+- [ ] **Step 1: Write `docs/security-audit-2026-10-18.md`** with exactly these sections: (1) *Findings & resolutions* — table of the 18 findings from the spec with status (fixed in this pass, with commit/task reference); (2) *Deferred / future work* — session revocation store, Redis-backed rate limiting, security headers (CSP/HSTS/X-Frame-Options), anti-enumeration on create-account, account lockout/MFA, CI plumbing cleanup; (3) *Deployment notes* — DB is dev-only (partner-confirmed 2026-10-18), no schema migration involved, `.env` remains git-tracked with dev-only values (fragile pattern — flag it); (4) *Verification evidence* — paste `bun run typecheck` and full Playwright suite summary output.
 - [ ] **Step 2: CLAUDE.md + package.json + workflow-ex.yml changes.**
 - [ ] **Step 3: Final verification**
 

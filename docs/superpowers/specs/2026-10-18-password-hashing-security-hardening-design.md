@@ -36,7 +36,7 @@ security-audit summary documenting residual risk. Scope was confirmed with the h
 7. **`authMiddleware` on `movements.server.ts`** fns (currently unauthenticated).
 8. **Docker**: production stage runs as non-root; dead Auth0/documentParser template keys
    removed from `public/config.js`.
-9. **Prisma**: rename `User.password` → `User.passwordHash` (column rename migration).
+9. **Prisma**: `User.password` keeps its name and now stores the argon2id hash (no schema migration).
 10. **e2e tests** covering the auth flows, including the mandatory **encrypt** (hash stored, not
     plaintext) and **verify** (correct password accepted, wrong rejected) use cases.
 11. **Written security-audit summary** (`docs/security-audit-2026-10-18.md`): what was found,
@@ -88,14 +88,14 @@ security-audit summary documenting residual risk. Scope was confirmed with the h
 |---|---|
 | Hash algorithm | argon2id via `Bun.password.hash` (Bun defaults) |
 | Legacy plaintext rows | Lazy migration inside sign-in (detect → compare → rehash → update) |
-| Prisma field | Rename `password` → `passwordHash`, stays `TEXT`, column-rename migration |
+| Prisma field | Keep the name `password` (partner decision, 2026-10-18); it stores the argon2id hash; no migration |
 | Rate limits | In-memory fixed window per IP: sign-in ~5/min, create-account ~3/min (exact numbers tunable) |
 | CSRF | Origin-check middleware on mutating server fns; keep `sameSite=lax`; `/logout` → POST form |
 | Session | `timingSafeEqual` compare; `path: "/"`; re-set cookie with fresh 7-day expiry on sign-in — **no token-format change** (deterministic HMAC stays; rotation-by-nonce only makes sense with the future revocation store); logout deletes with matching attrs |
 | Docker | `USER appuser` in production stage; strip dead `${VITE_AUTH0_*}` / documentParser keys from `public/config.js` |
 | Docs | Correct `CLAUDE.md` auth description (credential-based, not Auth0); remove unused `@auth0/auth0-react` dependency |
 | Dev runtime | Dev stack boots Vite under Bun (`bun --bun vite dev` in the Dockerfile dev CMD / dev script) so `Bun.password` exists in dev; implementer verifies this early and escalates if Bun-under-Vite proves incompatible |
-| Deployments | Dev-only (partner-confirmed): no non-dev instance with user rows; column-rename migration needs no deploy coordination |
+| Deployments | Dev-only (partner-confirmed): no non-dev instance with user rows; no schema migration involved |
 | Dead runtime-config mechanism | Delete `public/config.js` and its `<script>` include in `__root.tsx`; rely on build-time `VITE_ENVIRONMENT` via `config.client.ts` fallback (mechanism never worked — see Finding 14) |
 | Security headers / CSP | Future work (documented) |
 
@@ -110,7 +110,6 @@ security-audit summary documenting residual risk. Scope was confirmed with the h
   consumers (`__root.tsx` beforeLoad calls it and discards the result; `db.server.ts` obtains
   `DATABASE_URL` via it — refactor to read `configService` directly).
 - Zod password bounds (suggest `min(6).max(128)` — add explicit max for DoS safety).
-- Migration naming/timestamps per Prisma convention.
 - Structure/wording of `docs/security-audit-2026-10-18.md`.
 - e2e spec organization for `e2e/auth.spec.ts` (sign-up, sign-in, wrong-password, rate-limit,
   logout, legacy-row migration). Rate-limit test must not destabilize other tests (unique IPs
@@ -131,8 +130,8 @@ security-audit summary documenting residual risk. Scope was confirmed with the h
 7. `src/lib/get-server-config.server.ts` L4–9: returns `cookieSecret` + `database.url` to any
    caller → **critical**.
 8. `src/lib/db.server.ts` L12: obtains `DATABASE_URL` by calling the leaking server fn.
-9. `prisma/schema.prisma` L10–19: `password String` → rename; migration renames column
-   (existing `20260116200141_init` created it as `TEXT NOT NULL`).
+9. `prisma/schema.prisma` L10–19: `password String` — field name stays (partner decision); its content
+   becomes the argon2id hash. No migration needed.
 10. `src/lib/movements.server.ts`: no `authMiddleware` (unlike `weight.server.ts`,
     `workouts.server.ts`).
 11. `src/routes/logout.tsx`: GET page-load logout (logout-CSRF-prone) → POST form.
@@ -162,7 +161,7 @@ security-audit summary documenting residual risk. Scope was confirmed with the h
   create-account.
 - `movements.server.ts` fns require auth.
 - Production Docker stage runs non-root; `public/config.js` has no dead template keys.
-- Prisma field renamed to `passwordHash` with migration; app + e2e helpers updated.
+- Prisma field `password` stores only argon2id hashes; app + e2e helpers updated (no schema migration).
 - e2e `auth.spec.ts` covers: hash-stored-not-plaintext (**encrypt use case — mandatory**),
   correct-password accepted / wrong rejected (**verify use case — mandatory**), rate limiting,
   logout, legacy-row lazy migration. Full suite passes; `bun run typecheck` passes.
