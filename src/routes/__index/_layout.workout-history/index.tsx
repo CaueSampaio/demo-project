@@ -6,6 +6,12 @@ import { deleteWorkoutsServerFn } from "@/lib/workouts.functions";
 import { Trash2 } from "lucide-react";
 import { workoutHistoryQueryOptions } from "./-queries/workout-history";
 import { useSuspenseQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import type { JSX } from "react";
+import { barX, defineChart } from "@tanstack/charts";
+import { scaleBand } from "@tanstack/charts/scales/band";
+import { scaleLinear } from "@tanstack/charts/scales/linear";
+import { tooltip } from "@tanstack/charts/tooltip";
+import { Chart } from "@tanstack/charts/react";
 import { METRICS, metricSeries, type MetricKey } from "@/lib/metrics";
 
 const dateFormat = new Intl.DateTimeFormat("en-US", {
@@ -16,12 +22,63 @@ const dateFormat = new Intl.DateTimeFormat("en-US", {
 
 const formatNumber = (value: number) => value.toLocaleString("en-US");
 
+const UNITS: Record<MetricKey, string> = {
+  maxWeight: "lbs",
+  totalReps: "reps",
+  totalVolume: "volume",
+};
+
+const metricValue = (
+  workout: NonNullable<unknown>,
+  movementId: string,
+  metric: MetricKey,
+): number => metricSeries([workout as never], movementId, metric)[0]?.value ?? 0;
+
 export const Route = createFileRoute("/__index/_layout/workout-history/")({
   loader: async ({ context }) => {
     await context.queryClient.ensureQueryData(workoutHistoryQueryOptions());
   },
   component: WorkoutHistoryPage,
 });
+
+type MovementSummary = {
+  movementId: string;
+  movementName: string;
+  values: Record<MetricKey, number>;
+};
+
+function MetricBarChart({
+  rows,
+  metricLabel,
+  ariaLabel,
+}: {
+  rows: { movement: string; value: number }[];
+  metricLabel: string;
+  ariaLabel: string;
+}): JSX.Element {
+  return (
+    <Chart
+      definition={defineChart({
+        marks: [barX(rows, { y: "movement", x: "value" })],
+        scales: {
+          x: {
+            scale: scaleLinear,
+            nice: true,
+            grid: true,
+            axis: { label: metricLabel },
+          },
+          y: {
+            scale: scaleBand,
+            axis: { ticks: { count: rows.length + 1 } },
+          },
+        },
+        tooltip,
+      })}
+      height={180}
+      ariaLabel={ariaLabel}
+    />
+  );
+}
 
 function WorkoutHistoryPage() {
   const queryClient = useQueryClient();
@@ -61,12 +118,22 @@ function WorkoutHistoryPage() {
   const selectedDate = selectedWorkout?.completedAt
     ? dateFormat.format(new Date(selectedWorkout.completedAt))
     : "-";
-  // One block per distinct movement in the selected workout, by name asc.
-  const selectedMovements = Array.from(
-    new Map(
-      selectedWorkout?.sets.map((set) => [set.movement.id, set.movement.name]) ?? [],
-    ).entries(),
-  ).sort((a, b) => a[1].localeCompare(b[1]));
+  // One summary per distinct movement in the selected workout, by name asc.
+  // The per-movement metric values are derived once and shared by the
+  // numbered blocks and the bar charts.
+  const movementSummaries: MovementSummary[] = (
+    Array.from(
+      new Map(
+        selectedWorkout?.sets.map((set) => [set.movement.id, set.movement.name]) ?? [],
+      ).entries(),
+    ).sort((a, b) => a[1].localeCompare(b[1]))
+  ).map(([movementId, movementName]) => ({
+    movementId,
+    movementName,
+    values: Object.fromEntries(
+      METRICS.map(({ key }) => [key, metricValue(selectedWorkout!, movementId, key)]),
+    ) as Record<MetricKey, number>,
+  }));
 
   return (
     <div className="space-y-6">
@@ -118,20 +185,32 @@ function WorkoutHistoryPage() {
           <CardTitle>{selectedDate}</CardTitle>
         </CardHeader>
         <CardContent>
-          {selectedMovements.length === 0 ? (
+          {movementSummaries.length === 0 ? (
             <p className="text-sm text-slate-500">No movements in this workout.</p>
           ) : (
             <div className="space-y-6">
-              {selectedMovements.map(([movementId, movementName]) => (
-                <div key={movementId} className="space-y-2">
-                  <p className="font-medium">{movementName}</p>
+              <div className="grid gap-6 lg:grid-cols-3">
+                {METRICS.map(({ key, label }) => (
+                  <MetricBarChart
+                    key={key}
+                    rows={movementSummaries.map((movement) => ({
+                      movement: movement.movementName,
+                      value: movement.values[key],
+                    }))}
+                    metricLabel={label}
+                    ariaLabel={`${selectedDate} — ${label} by movement`}
+                  />
+                ))}
+              </div>
+              {movementSummaries.map((movement) => (
+                <div key={movement.movementId} className="space-y-2">
+                  <p className="font-medium">{movement.movementName}</p>
                   <div className="grid gap-2 sm:grid-cols-3">
                     {METRICS.map(({ key, label }) => (
                       <div key={key} className="rounded-lg border border-slate-100 p-3">
                         <p className="text-xs text-slate-500">{label}</p>
                         <p className="text-sm text-slate-900">
-                          {formatNumber(metricSeries([selectedWorkout!], movementId, key as MetricKey)[0]?.value ?? 0)}{" "}
-                          {UNITS[key]}
+                          {formatNumber(movement.values[key])} {UNITS[key]}
                         </p>
                       </div>
                     ))}
@@ -145,9 +224,3 @@ function WorkoutHistoryPage() {
     </div>
   );
 }
-
-const UNITS: Record<MetricKey, string> = {
-  maxWeight: "lbs",
-  totalReps: "reps",
-  totalVolume: "volume",
-};
