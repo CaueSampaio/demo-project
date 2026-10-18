@@ -132,8 +132,6 @@ test("6th sign-in attempt in a minute is rate limited", async ({ page }) => {
     await expect(page.getByText("Invalid email or password")).toBeVisible({ timeout: 15_000 });
   }
 
-  // Reset so the window truly covers these 5 + the next attempt... only the
-  // first 5 wrong attempts above already count, so the 6th must be blocked.
   await fillAndSubmitSignIn(page, email, "wrong-password");
   await expect(page.getByText("Too many attempts. Try again shortly.")).toBeVisible({
     timeout: 15_000,

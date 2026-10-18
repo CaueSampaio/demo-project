@@ -11,7 +11,7 @@ function LogoutPage() {
 
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    logoutServerFn().then(() => {
+    logoutServerFn().finally(() => {
       router.navigate({ to: "/sign-in" });
     });
   };

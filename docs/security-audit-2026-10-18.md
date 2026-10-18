@@ -29,7 +29,7 @@ All 18 findings from the recon inventory, resolved in this pass unless noted.
 | 14 | `public/config.js`: runtime-config mechanism is dead (envsubst never runs; dead Auth0/documentParser keys) | File, its `<script>` include in `__root.tsx`, and the `window.APP_CONFIG` path deleted; client falls through to build-time `VITE_ENVIRONMENT` | `0ea7549` (T4) |
 | 15 | `CLAUDE.md` says "Auth0-based authentication"; `@auth0/auth0-react` unused | Doc corrected (credential-based auth, argon2id, HMAC session cookie); dependency removed and lockfile synced; stale `get-server-config.server.ts` references removed; dev-under-Bun documented (**this task**) | this pass |
 | 16 | `e2e/helpers/auth.ts` inserts plaintext test users | `createTestUser` inserts a pinned argon2id hash (of `"e2test-password"`); custom passwords are rejected | `86bd202` (T3) |
-| 17 | No rate limiting / CSRF / security headers anywhere | Origin-check `csrfMiddleware` on **every** POST server fn (11/11); per-IP in-memory fixed-window limiter (sign-in 5/min, create-account 3/min) — headers remain future work | `3c92758` (T6), `4b0a6d9` (T7) |
+| 17 | No rate limiting / CSRF / security headers anywhere | Origin-check `csrfMiddleware` on **every** POST server fn (12/12); per-IP in-memory fixed-window limiter (sign-in 5/min, create-account 3/min; XFF trusted for keying **only** when `TRUST_PROXY=1`; expired buckets evicted with a 10k-entry soft cap) — headers remain future work | `3c92758` (T6), `4b0a6d9` (T7), this pass |
 | 18 | `docker-compose.dev.yml` hardcodes dev creds `postgres/postgres` | Documented as acceptable for the dev-only DB (see Deployment notes); no change | n/a (accepted) |
 
 **Count:** 18 findings → 17 fixed in this pass, 1 accepted-and-documented (#18). No finding left unfixed without an explicit partner decision.
@@ -89,6 +89,11 @@ Per the design doc's non-goals, with partner sign-off:
   Recommendation: track `.env.example` only; keep `.env` in `.gitignore`.
 - Prisma field `User.password` keeps its name and stores the argon2id hash (no rename, no
   migration).
+- **Deploying behind a proxy:** set `TRUST_PROXY=1` so the rate limiter keys on the
+  `X-Forwarded-For` client IP. Without it, the limiter keys on the socket IP only — behind
+  a non-overwriting proxy every client would share one bucket. Do **not** set it when the
+  app is exposed directly (port 3000, current dev topology): clients could spoof XFF to
+  bypass per-IP limiting. Read once at startup; restart after changing.
 - Deployment rests on the current Docker defaults; there is no separate production smoke run
   for this branch (prod-stage `USER appuser` verified as config, not runtime-smoked).
 

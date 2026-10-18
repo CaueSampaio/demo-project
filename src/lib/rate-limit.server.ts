@@ -15,7 +15,29 @@ export const RATE_LIMITS: Record<RateLimitBucket, { limit: number; windowMs: num
   createAccount: { limit: 3, windowMs: 60_000 },
 };
 
+// Whether client-supplied X-Forwarded-For may be trusted as the rate-limit key.
+// Only enable behind an IP-overwriting proxy (e.g. `TRUST_PROXY=1` in the
+// reverse proxy's environment); with direct exposure, trusting XFF lets any
+// client spoof per-IP buckets and bypass the limit.
+// NOTE: this is read once at module init — a restart is required after changing it.
+const TRUST_XFF = process.env.TRUST_PROXY === "1";
+
 const buckets = new Map<string, { count: number; windowStart: number }>();
+
+/** Soft cap on tracked buckets; guards against unbounded memory growth. */
+const MAX_BUCKETS = 10_000;
+
+function pruneExpired(now: number) {
+  for (const [key, entry] of buckets) {
+    if (now - entry.windowStart >= RATE_LIMITS[bucketOf(key)].windowMs) {
+      buckets.delete(key);
+    }
+  }
+}
+
+function bucketOf(key: string): RateLimitBucket {
+  return (key.split(":", 1)[0] ?? "signIn") as RateLimitBucket;
+}
 
 /**
  * In-memory fixed-window rate limiter keyed by `${bucket}:${ip}`.
@@ -30,7 +52,21 @@ export function checkRateLimit(
   const key = `${bucket}:${ip}`;
   const now = Date.now();
   const entry = buckets.get(key);
+  if (entry && now - entry.windowStart >= windowMs) {
+    buckets.delete(key);
+  }
   if (!entry || now - entry.windowStart >= windowMs) {
+    if (buckets.size >= MAX_BUCKETS) {
+      pruneExpired(now);
+      if (buckets.size >= MAX_BUCKETS) {
+        // Still over the soft cap: shed the oldest windows by insertion order.
+        let excess = buckets.size - MAX_BUCKETS + 1;
+        for (const key of buckets.keys()) {
+          if (excess-- <= 0) break;
+          buckets.delete(key);
+        }
+      }
+    }
     buckets.set(key, { count: 1, windowStart: now });
     return { allowed: true, retryAfterSeconds: 0 };
   }
@@ -52,7 +88,12 @@ export function resetRateLimits() {
  * clients still get limited, against the same limits).
  */
 export function getClientIp(): string {
-  return getRequestIP({ xForwardedFor: true }) ?? "unknown";
+  if (TRUST_XFF) {
+    return getRequestIP({ xForwardedFor: true }) ?? "unknown";
+  }
+  // Socket IP only — client-supplied XFF headers are not trusted when the app
+  // is exposed directly (no IP-overwriting proxy in front).
+  return getRequestIP() ?? "unknown";
 }
 
 /**
