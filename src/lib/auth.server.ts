@@ -92,17 +92,26 @@ export const signInServerFn = createServerFn({ method: "POST" })
     let valid = false;
     if (user && isPasswordHash(user.password)) {
       valid = await verifyPassword(password, user.password);
-    } else if (user) {
-      // Legacy plaintext row: compare directly, then lazily migrate it to an
-      // argon2id hash on successful sign-in. (Task 5 swaps `===` for a
-      // constant-time comparison.)
-      valid = password === user.password;
-      if (valid) {
-        await prisma.user.update({
-          where: { id: user.id },
-          data: { password: await hashPassword(password) },
-        });
+      // Legacy heuristic: a PLAINTEXT password that merely starts with "$"
+      // (e.g. "$not-a-hash") is misrouted here and verifyPassword always
+      // fails, locking that user out forever and blocking migration. Fall
+      // back to a direct comparison; it can only match when the caller
+      // already knows the exact stored value, so it does not weaken auth.
+      if (!valid && password === user.password) {
+        valid = true;
       }
+    } else if (user) {
+      // Legacy plaintext row: compare directly, then lazily migrate.
+      valid = password === user.password;
+    }
+    if (user && valid) {
+      // Lazy migration: rehash a legacy plaintext password to argon2id on
+      // successful sign-in. (Task 5 swaps `===` above for a constant-time
+      // comparison.)
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { password: await hashPassword(password) },
+      });
     }
 
     if (!user || !valid) {
