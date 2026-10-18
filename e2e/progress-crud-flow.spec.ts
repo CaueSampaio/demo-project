@@ -2,10 +2,13 @@ import { test, expect } from "@playwright/test";
 import { createTestUser, sessionCookieFor, testPrisma } from "./helpers/auth";
 import { waitForHydration } from "./helpers/hydration";
 
+const day = (d: Date) =>
+  new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(d);
+
 // Single end-to-end CRUD flow through the real UI:
 // create movement -> read (empty) -> start workout -> add set -> complete ->
-// charts (history + movement) -> delete -> database is clean again.
-test("progress crud flow: create, read, update, complete, chart, delete", async ({ page }) => {
+// history details -> movement chart -> delete -> database is clean again.
+test("progress crud flow: create, read, update, complete, details, delete", async ({ page }) => {
   const user = await createTestUser();
   await page.context().addCookies(sessionCookieFor(user.id));
 
@@ -41,12 +44,19 @@ test("progress crud flow: create, read, update, complete, chart, delete", async 
   await page.getByRole("button", { name: "Complete Workout" }).click();
   await expect(page.getByText("No active workout")).toBeVisible();
 
-  // 5. History chart: one dot for the single completed workout.
+  // 5. History details: the most recent (only) completed workout is selected
+  // by default and shows the movement's three metrics from its sets.
   await page.getByRole("link", { name: "Workout History" }).click();
   await waitForHydration(page);
-  await page.getByLabel("Movement").selectOption({ label: name });
-  const historyChart = page.getByRole("img", { name: `${name} — Max Weight over time` });
-  await expect(historyChart.locator("circle")).toHaveCount(1);
+  const completedToday = day(new Date());
+  await expect(page.getByRole("button", { name: `Select workout ${completedToday}` })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(page.getByText(name)).toBeVisible();
+  await expect(page.getByText(/135\s+lbs/)).toBeVisible();
+  await expect(page.getByText(/10\s+reps/)).toBeVisible();
+  await expect(page.getByText(/1,350/)).toBeVisible();
 
   // 6. Movement chart: one dot, and the tooltip switches metric to volume.
   await page.getByRole("link", { name: "Movements" }).click();
