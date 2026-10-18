@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { WeightInput } from "@/components/weight-input";
 import { Select } from "@/components/ui/select";
 import {
   createWorkoutServerFn,
@@ -120,14 +121,7 @@ function CurrentWorkoutPage() {
                 </option>
               ))}
             </Select>
-            <Input
-              type="number"
-              placeholder="Weight"
-              value={weight}
-              onChange={(e) => setWeight(e.target.value)}
-              className="w-24"
-              min={0}
-            />
+            <WeightInput value={weight} onChange={setWeight} min={0} max={1500} className="w-24" />
             <Input
               type="number"
               placeholder="Reps"
