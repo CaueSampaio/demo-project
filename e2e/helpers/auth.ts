@@ -75,25 +75,41 @@ export async function seedWeights(
 /**
  * Seeds a completed workout for a user directly in the dev database and
  * returns its id. Movements are global (no userId) with non-unique names, so
- * each unique `movementName` is resolved find-first-or-create (`isBodyweight:
- * false` on created movements, since workouts only consume regular
- * movements). `completedAt` uses the same `daysAgo` pattern as `seedWeights`.
+ * each unique movement is resolved find-first-or-create (`isBodyweight: false`
+ * on created movements unless a `{ name, isBodyweight }` spec is given, since
+ * string names are shorthand for regular movements). `completedAt` uses the
+ * same `daysAgo` pattern as `seedWeights`.
  */
 export async function seedCompletedWorkout(
   userId: string,
-  workout: { daysAgo: number; sets: { movementName: string; weight: number; reps: number }[] },
+  workout: {
+    daysAgo: number;
+    sets: {
+      movementName: string | { name: string; isBodyweight: boolean };
+      weight: number;
+      reps: number;
+    }[];
+  },
 ): Promise<string> {
   const prisma = getTestPrismaClient();
 
   const movementIds = new Map<string, string>();
-  for (const movementName of new Set(workout.sets.map((s) => s.movementName))) {
-    let movement = await prisma.movement.findFirst({ where: { name: movementName } });
+  const specs = new Map<string, { name: string; isBodyweight: boolean }>();
+  for (const set of workout.sets) {
+    const spec =
+      typeof set.movementName === "string"
+        ? { name: set.movementName, isBodyweight: false }
+        : set.movementName;
+    specs.set(spec.name, spec);
+  }
+  for (const spec of specs.values()) {
+    let movement = await prisma.movement.findFirst({ where: { name: spec.name } });
     if (!movement) {
       movement = await prisma.movement.create({
-        data: { name: movementName, isBodyweight: false },
+        data: { name: spec.name, isBodyweight: spec.isBodyweight },
       });
     }
-    movementIds.set(movementName, movement.id);
+    movementIds.set(spec.name, movement.id);
   }
 
   const created = await prisma.workout.create({
@@ -101,11 +117,13 @@ export async function seedCompletedWorkout(
   });
 
   await prisma.set.createMany({
-    data: workout.sets.map(({ movementName, weight, reps }) => ({
+    data: workout.sets.map((set) => ({
       workoutId: created.id,
-      movementId: movementIds.get(movementName)!,
-      reps,
-      weight,
+      movementId: movementIds.get(
+        typeof set.movementName === "string" ? set.movementName : set.movementName.name,
+      )!,
+      reps: set.reps,
+      weight: set.weight,
     })),
   });
 
