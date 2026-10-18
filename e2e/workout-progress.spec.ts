@@ -58,19 +58,24 @@ test.describe("workout-history details", () => {
     await expect(page.locator('[aria-pressed="true"]')).toHaveCount(1);
 
     // Details card: the selected workout's date as its title, W3's Alpha numbers.
-    // The charts repeat movement names as axis ticks, so scope to the number block.
+    // Charts (axis/legend/runs) repeat movement names, so movement-name
+    // assertions stay scoped to the number-block paragraph.
     await expect(page.getByRole("heading", { name: day(daysAgo(1)) })).toBeVisible();
     await expect(page.getByRole("paragraph").filter({ hasText: "Alpha Bench" })).toBeVisible();
-    await expect(page.getByText(/140\s+lbs/)).toBeVisible();
+    // The run list and the aggregate line both contain "140 lbs" — .first() is
+    // equivalent from the operator's point of view (value present in resume).
+    await expect(page.getByText(/140\s+lbs/).first()).toBeVisible();
     await expect(page.getByText(/12\s+reps/)).toBeVisible();
     await expect(page.getByText(/1,680/)).toBeVisible();
+    // W3's single Alpha run appears in the resume as a per-run line.
+    await expect(page.getByText(/1st: 140 lbs × 12/)).toBeVisible();
 
-    // Three bar charts, one per metric, all visible at once — their accessible
-    // names carry the selected date and the metric label (W3 has only Alpha,
-    // so the one-bar case is exercised implicitly).
+    // Three charts, one per metric over the workout's SETS — accessible names
+    // carry the selected date, the metric label, and the "by set" granularity
+    // (W3 has one set, so the single-point series renders via the dot).
     for (const label of ["Max Weight", "Total Reps", "Total Volume"]) {
       await expect(
-        page.getByRole("img", { name: `${day(daysAgo(1))} — ${label} by movement` }),
+        page.getByRole("img", { name: `${day(daysAgo(1))} — ${label} by set` }),
       ).toBeVisible();
     }
   });
@@ -83,14 +88,20 @@ test.describe("workout-history details", () => {
 
     // W1 contains both movements, each with its three metrics from that workout only.
     await expect(page.getByRole("paragraph").filter({ hasText: "Alpha Bench" })).toBeVisible();
-    await expect(page.getByText(/145\s+lbs/)).toBeVisible();
+    await expect(page.getByText(/145\s+lbs/).first()).toBeVisible();
     await expect(page.getByText(/18\s+reps/)).toBeVisible();
     await expect(page.getByText(/2,510/)).toBeVisible();
 
     await expect(page.getByRole("paragraph").filter({ hasText: "Zulu Squat" })).toBeVisible();
-    await expect(page.getByText(/225\s+lbs/)).toBeVisible();
+    await expect(page.getByText(/225\s+lbs/).first()).toBeVisible();
     await expect(page.getByText(/5\s+reps/)).toBeVisible();
     await expect(page.getByText(/1,125/)).toBeVisible();
+
+    // EACH RUN appears in the resume, in performed order with its set numbers:
+    // Alpha ran twice (135x10 -> 145x8), Zulu once.
+    await expect(page.getByText(/1st: 135 lbs × 10/)).toBeVisible();
+    await expect(page.getByText(/2nd: 145 lbs × 8/)).toBeVisible();
+    await expect(page.getByText(/1st: 225 lbs × 5/)).toBeVisible();
   });
 
   test("switching workout updates the details", async ({ page }) => {
@@ -101,22 +112,22 @@ test.describe("workout-history details", () => {
     await page.getByRole("button", { name: `Select workout ${day(daysAgo(2))}` }).click();
     await expect(page.getByRole("heading", { name: day(daysAgo(2)) })).toBeVisible();
     await expect(page.getByRole("paragraph").filter({ hasText: "Alpha Bench" })).toBeVisible();
-    await expect(page.getByText(/150\s+lbs/)).toBeVisible();
+    await expect(page.getByText(/150\s+lbs/).first()).toBeVisible();
     await expect(page.getByText(/6\s+reps/)).toBeVisible();
     await expect(page.getByText(/900/)).toBeVisible();
 
     await expect(page.getByRole("paragraph").filter({ hasText: "Zulu Squat" })).toBeVisible();
-    await expect(page.getByText(/240\s+lbs/)).toBeVisible();
+    await expect(page.getByText(/240\s+lbs/).first()).toBeVisible();
     await expect(page.getByText(/1,200/)).toBeVisible();
 
     // The charts follow the selection: the W2 date replaces the W3 date in
-    // every chart's accessible name (bar internals are trusted to the lib).
+    // every chart's accessible name (chart internals are trusted to the lib).
     for (const label of ["Max Weight", "Total Reps", "Total Volume"]) {
       await expect(
-        page.getByRole("img", { name: `${day(daysAgo(2))} — ${label} by movement` }),
+        page.getByRole("img", { name: `${day(daysAgo(2))} — ${label} by set` }),
       ).toBeVisible();
       await expect(
-        page.getByRole("img", { name: `${day(daysAgo(1))} — ${label} by movement` }),
+        page.getByRole("img", { name: `${day(daysAgo(1))} — ${label} by set` }),
       ).toHaveCount(0);
     }
   });
@@ -136,7 +147,7 @@ test.describe("workout-history details", () => {
     // Picker lists only the 3 completed workout dates.
     await expect(page.getByRole("button", { name: /Select workout/ })).toHaveCount(3);
     // Details still show W3's Alpha numbers (not the active workout's 999 lbs set).
-    await expect(page.getByText(/140\s+lbs/)).toBeVisible();
+    await expect(page.getByText(/140\s+lbs/).first()).toBeVisible();
     await expect(page.getByText(/999\s+lbs/)).toHaveCount(0);
   });
 
@@ -146,7 +157,7 @@ test.describe("workout-history details", () => {
 
     // Select W2 first (not the default), then delete it.
     await page.getByRole("button", { name: `Select workout ${day(daysAgo(2))}` }).click();
-    await expect(page.getByText(/150\s+lbs/)).toBeVisible();
+    await expect(page.getByText(/150\s+lbs/).first()).toBeVisible();
 
     await page.getByRole("button", { name: `Delete workout ${day(daysAgo(2))}` }).click();
 

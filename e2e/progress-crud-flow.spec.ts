@@ -54,14 +54,16 @@ test("progress crud flow: create, read, update, complete, details, delete", asyn
     "true",
   );
   await expect(page.getByRole("paragraph").filter({ hasText: name })).toBeVisible();
-  await expect(page.getByText(/135\s+lbs/)).toBeVisible();
+  // Single movement, single set: one per-run line plus the aggregates.
+  await expect(page.getByText(/135\s+lbs/).first()).toBeVisible();
+  await expect(page.getByText(/1st: 135 lbs × 10/)).toBeVisible();
   await expect(page.getByText(/10\s+reps/)).toBeVisible();
   await expect(page.getByText(/1,350/)).toBeVisible();
 
-  // Three bar charts for the selected workout (only movement = Flow Bench).
+  // Three per-set line/dot charts for the selected workout.
   for (const label of ["Max Weight", "Total Reps", "Total Volume"]) {
     await expect(
-      page.getByRole("img", { name: `${completedToday} — ${label} by movement` }),
+      page.getByRole("img", { name: `${completedToday} — ${label} by set` }),
     ).toBeVisible();
   }
 

@@ -7,8 +7,7 @@ import { Trash2 } from "lucide-react";
 import { workoutHistoryQueryOptions } from "./-queries/workout-history";
 import { useSuspenseQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { JSX } from "react";
-import { barX, colorLegend, colorLegendItems, defineChart } from "@tanstack/charts";
-import { scaleBand } from "@tanstack/charts/scales/band";
+import { dot, colorLegend, colorLegendItems, defineChart, lineY } from "@tanstack/charts";
 import { scaleLinear } from "@tanstack/charts/scales/linear";
 import { tooltip } from "@tanstack/charts/tooltip";
 import { Chart } from "@tanstack/charts/react";
@@ -47,6 +46,16 @@ type MovementSummary = {
   values: Record<MetricKey, number>;
 };
 
+/** One chart point per SET: its 1-based position in the workout plus the
+ * three per-set metrics (weight, reps, weight × reps). */
+type SetSample = {
+  setIndex: number;
+  movementName: string;
+  maxWeight: number;
+  totalReps: number;
+  totalVolume: number;
+};
+
 // ~8 distinct, light-theme friendly hexes (Tailwind 600-ish tones). Movements
 // beyond the palette size cycle deterministically (no crash).
 const MOVEMENT_PALETTE = [
@@ -60,7 +69,7 @@ const MOVEMENT_PALETTE = [
   "#059669",
 ] as const;
 
-/** Ordinal label for the movement's order in the workout: "1st", "2nd", ... */
+/** Ordinal label for a position index: "1st", "2nd", ..., "11th"/"12th"/"13th". */
 const ordinalLabel = (position: number) => {
   const mod100 = position % 100;
   if (mod100 >= 11 && mod100 <= 13) return `${position}th`;
@@ -68,30 +77,38 @@ const ordinalLabel = (position: number) => {
   return `${position}${suffixes[position % 10] ?? "th"}`;
 };
 
-function MetricBarChart({
-  rows,
+function MetricSetChart({
+  samples,
   metricLabel,
+  metricKey,
   movementColors,
   ariaLabel,
 }: {
-  rows: { ordinal: string; movementName: string; value: number }[];
+  samples: SetSample[];
   metricLabel: string;
+  metricKey: MetricKey;
   movementColors: { movementName: string; color: string }[];
   ariaLabel: string;
 }): JSX.Element {
+  const rows = samples.map((sample) => ({
+    setIndex: sample.setIndex,
+    movementName: sample.movementName,
+    value: sample[metricKey],
+  }));
+  // 1..N tick values keep every set position labeled (tick count would snap
+  // to scale candidates and hide the final position for small N).
+  const tickValues = rows.map((row) => row.setIndex);
+
   return (
     <Chart
       definition={defineChart({
         marks: [
-          barX(rows, {
-            y: "ordinal",
-            x: "value",
-            // Color channel = movement name: identical color → movement
-            // mapping in all three charts, and it populates the legend.
-            color: "movementName",
-            inset: 12,
-            maxThickness: 48,
-          }),
+          // One line + dots per MOVEMENT: repeated runs of the same movement
+          // connect into its own trajectory across the workout's sets.
+          // `lineY` renders nothing for a single-point series; the dot covers
+          // it (same caveat as the weight-chart recipe).
+          lineY(rows, { x: "setIndex", y: "value", color: "movementName" }),
+          dot(rows, { x: "setIndex", y: "value", color: "movementName" }),
         ],
         color: {
           domain: movementColors.map(({ movementName }) => movementName),
@@ -102,15 +119,22 @@ function MetricBarChart({
           }),
         },
         scales: {
+          // x = set sequence position within the workout; ticks show ordinals
+          // (movement names live in the legend, not on the category axis).
           x: {
+            scale: scaleLinear,
+            nice: true,
+            grid: true,
+            axis: {
+              ticks: { values: tickValues, format: (value) => ordinalLabel(Number(value)) },
+            },
+          },
+          y: {
             scale: scaleLinear,
             nice: true,
             grid: true,
             axis: { label: metricLabel },
           },
-          // Category axis = movement order, so ticks render ordinals; the
-          // movement names live in the legend.
-          y: { scale: scaleBand },
         },
         tooltip,
       })}
@@ -158,10 +182,21 @@ function WorkoutHistoryPage() {
   const selectedDate = selectedWorkout?.completedAt
     ? dateFormat.format(new Date(selectedWorkout.completedAt))
     : "-";
-  // Distinct movements in order of appearance within the selected workout's
-  // sets (Map preserves insertion order). Charts use this order for ordinal
-  // bars and the deterministic palette; the numbers blocks keep the
-  // approved alphabetical order.
+  // Charts consume `workout.sets` in NATURAL DB ORDER (no migration; the user
+  // ruling explicitly relies on the row order the server fn returns — Postgres
+  // does not guarantee it; if it ever proves flaky, the fix is a Set.createdAt
+  // migration, out of scope now). Each set becomes one point at its 1-based
+  // position in the workout, carrying all three per-set metrics.
+  const setSamples: SetSample[] = (selectedWorkout?.sets ?? []).map((set, index) => ({
+    setIndex: index + 1,
+    movementName: set.movement.name,
+    maxWeight: set.weight,
+    totalReps: set.reps,
+    totalVolume: set.weight * set.reps,
+  }));
+  // Distinct movements in order of appearance (Map preserves insertion order)
+  // drive the deterministic palette so a movement keeps the same color across
+  // all three charts and the legend; the numbers blocks stay alphabetical.
   const appearanceOrder = Array.from(
     new Map(
       selectedWorkout?.sets.map((set) => [set.movement.id, set.movement.name]) ?? [],
@@ -192,6 +227,14 @@ function WorkoutHistoryPage() {
     color: MOVEMENT_PALETTE[index % MOVEMENT_PALETTE.length] as string,
     movementId,
   }));
+  // Each movement's runs, in performed order (natural `workout.sets` order is
+  // preserved by this fold — see the set-order comment above).
+  const runsByMovement = new Map<string, { weight: number; reps: number }[]>();
+  for (const set of selectedWorkout?.sets ?? []) {
+    const runs = runsByMovement.get(set.movement.id) ?? [];
+    runs.push({ weight: set.weight, reps: set.reps });
+    runsByMovement.set(set.movement.id, runs);
+  }
 
   return (
     <div className="space-y-6">
@@ -249,22 +292,31 @@ function WorkoutHistoryPage() {
             <div className="space-y-6">
               <div className="grid gap-6 lg:grid-cols-3">
                 {METRICS.map(({ key, label }) => (
-                  <MetricBarChart
+                  <MetricSetChart
                     key={key}
-                    rows={movementColors.map((movement, index) => ({
-                      ordinal: ordinalLabel(index + 1),
-                      movementName: movement.movementName,
-                      value: valuesByMovement.get(movement.movementId)![key],
-                    }))}
+                    samples={setSamples}
+                    metricKey={key}
                     metricLabel={label}
                     movementColors={movementColors}
-                    ariaLabel={`${selectedDate} — ${label} by movement`}
+                    ariaLabel={`${selectedDate} — ${label} by set`}
                   />
                 ))}
               </div>
               {movementSummaries.map((movement) => (
                 <div key={movement.movementId} className="space-y-2">
                   <p className="font-medium">{movement.movementName}</p>
+                  {/* Each run of the movement, in performed order. The run
+                      ordinal counts this movement's runs (1st/2nd run of the
+                      movement), while the charts index sets by their position
+                      within the whole workout. */}
+                  <ul className="space-y-1">
+                    {runsByMovement.get(movement.movementId)!.map((run, index) => (
+                      <li key={index} className="text-xs text-slate-500">
+                        {ordinalLabel(index + 1)}: {formatNumber(run.weight)} lbs ×{" "}
+                        {formatNumber(run.reps)}
+                      </li>
+                    ))}
+                  </ul>
                   <div className="grid gap-2 sm:grid-cols-3">
                     {METRICS.map(({ key, label }) => (
                       <div key={key} className="rounded-lg border border-slate-100 p-3">
