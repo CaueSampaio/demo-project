@@ -28,6 +28,16 @@ export const getWeightsServerFn = createServerFn()
     return records;
   });
 
+export const getLatestBodyWeightServerFn = createServerFn()
+  .middleware([authMiddleware])
+  .handler(async ({ context }: { context: { user: { id: string } } }) => {
+    const prisma = await getServerSidePrismaClient();
+    return prisma.bodyWeightRecord.findFirst({
+      where: { userId: context.user.id },
+      orderBy: { recordedAt: "desc" },
+    });
+  });
+
 export const deleteWeightServerFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .inputValidator(z.object({ id: z.string() }))

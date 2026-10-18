@@ -20,6 +20,9 @@ function getTestPrismaClient(): PrismaClient {
   return _prismaClient;
 }
 
+/** Lazily-instantiated Prisma client for the dev database, exported so tests can assert DB state directly. */
+export const testPrisma = getTestPrismaClient();
+
 /**
  * Creates a throwaway user directly in the dev database for e2e tests.
  */

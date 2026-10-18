@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,19 +18,36 @@ function MovementsPage() {
   const queryClient = useQueryClient();
   const { data: movements } = useSuspenseQuery(movementsQueryOptions());
   const [name, setName] = useState("");
+  const [isBodyweight, setIsBodyweight] = useState(false);
+  const nameRef = useRef<HTMLInputElement>(null);
+  const checkboxRef = useRef<HTMLInputElement>(null);
+
+  // SSR hydration race guard (same pattern as WeightInput): `input` and
+  // `change` events dispatched before hydration are dropped by React while
+  // the DOM keeps the typed/checked state. After hydration, adopt whatever
+  // the DOM holds into our controlled state so early interactions are not lost.
+  useEffect(() => {
+    const nameEl = nameRef.current;
+    if (nameEl && nameEl.value !== name) setName(nameEl.value);
+    const checkboxEl = checkboxRef.current;
+    if (checkboxEl && checkboxEl.checked !== isBodyweight) setIsBodyweight(checkboxEl.checked);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const createMovementMutation = useMutation({
-    mutationFn: (name: string) => createMovementServerFn({ data: { name } }),
+    mutationFn: (data: { name: string; isBodyweight: boolean }) =>
+      createMovementServerFn({ data }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: movementsQueryOptions().queryKey });
       setName("");
+      setIsBodyweight(false);
     },
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
-    createMovementMutation.mutate(name.trim());
+    createMovementMutation.mutate({ name: name.trim(), isBodyweight });
   };
 
   return (
@@ -46,9 +63,20 @@ function MovementsPage() {
             <Input
               placeholder="Movement name (e.g. Bench Press)"
               value={name}
+              ref={nameRef}
               onChange={(e) => setName(e.target.value)}
               className="flex-1"
             />
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                ref={checkboxRef}
+                type="checkbox"
+                checked={isBodyweight}
+                onChange={(e) => setIsBodyweight(e.target.checked)}
+                className="rounded border-gray-300"
+              />
+              Body-weight
+            </label>
             <Button type="submit" disabled={!name.trim()}>
               {createMovementMutation.isPending ? "Adding..." : "Add"}
             </Button>

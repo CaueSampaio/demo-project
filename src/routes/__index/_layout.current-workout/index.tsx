@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,8 +12,8 @@ import {
   deleteSetServerFn,
 } from "@/lib/workouts.server";
 import { Play, Check, Plus, X } from "lucide-react";
-import { useSuspenseQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { currentWorkoutQueryOptions, movementsQueryOptions } from "./-queries/current-workout";
+import { useSuspenseQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { currentWorkoutQueryOptions, latestBodyWeightQueryOptions, movementsQueryOptions } from "./-queries/current-workout";
 
 export const Route = createFileRoute("/__index/_layout/current-workout/")({
   loader: async ({ context }) => {
@@ -32,6 +32,21 @@ function CurrentWorkoutPage() {
   const [selectedMovement, setSelectedMovement] = useState("");
   const [reps, setReps] = useState("");
   const [weight, setWeight] = useState("");
+
+  const isBodyweightSelected =
+    movements.find((m) => m.id === selectedMovement)?.isBodyweight ?? false;
+
+  const { data: latestWeight } = useQuery({
+    ...latestBodyWeightQueryOptions(),
+    enabled: isBodyweightSelected,
+    staleTime: Infinity,
+  });
+
+  useEffect(() => {
+    if (isBodyweightSelected && latestWeight?.weightLbs != null) {
+      setWeight(String(latestWeight.weightLbs));
+    }
+  }, [isBodyweightSelected, latestWeight]);
 
   const createWorkoutMutation = useMutation({
     mutationFn: () => createWorkoutServerFn(),
@@ -113,7 +128,10 @@ function CurrentWorkoutPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <form onSubmit={handleAddSet} className="flex gap-2 items-center">
-            <Select value={selectedMovement} onChange={(e) => setSelectedMovement(e.target.value)}>
+            <Select
+              value={selectedMovement}
+              onChange={(e) => setSelectedMovement(e.target.value)}
+              aria-label="Movement">
               <option value="">Select movement</option>
               {movements.map((m) => (
                 <option key={m.id} value={m.id}>
