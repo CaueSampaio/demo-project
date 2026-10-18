@@ -66,6 +66,46 @@ export async function seedWeights(
 }
 
 /**
+ * Seeds a completed workout for a user directly in the dev database and
+ * returns its id. Movements are global (no userId) with non-unique names, so
+ * each unique `movementName` is resolved find-first-or-create (`isBodyweight:
+ * false` on created movements, since workouts only consume regular
+ * movements). `completedAt` uses the same `daysAgo` pattern as `seedWeights`.
+ */
+export async function seedCompletedWorkout(
+  userId: string,
+  workout: { daysAgo: number; sets: { movementName: string; weight: number; reps: number }[] },
+): Promise<string> {
+  const prisma = getTestPrismaClient();
+
+  const movementIds = new Map<string, string>();
+  for (const movementName of new Set(workout.sets.map((s) => s.movementName))) {
+    let movement = await prisma.movement.findFirst({ where: { name: movementName } });
+    if (!movement) {
+      movement = await prisma.movement.create({
+        data: { name: movementName, isBodyweight: false },
+      });
+    }
+    movementIds.set(movementName, movement.id);
+  }
+
+  const created = await prisma.workout.create({
+    data: { userId, completedAt: new Date(Date.now() - workout.daysAgo * 86_400_000) },
+  });
+
+  await prisma.set.createMany({
+    data: workout.sets.map(({ movementName, weight, reps }) => ({
+      workoutId: created.id,
+      movementId: movementIds.get(movementName)!,
+      reps,
+      weight,
+    })),
+  });
+
+  return created.id;
+}
+
+/**
  * Forges the signed session cookie the server would set, so tests skip the
  * auth flow. Signature matches src/lib/auth.server.ts (HMAC-SHA256 of the
  * user ID keyed with COOKIE_SECRET).
