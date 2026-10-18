@@ -7,7 +7,7 @@ import { Trash2 } from "lucide-react";
 import { workoutHistoryQueryOptions } from "./-queries/workout-history";
 import { useSuspenseQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { JSX } from "react";
-import { dot, defineChart } from "@tanstack/charts";
+import { lineY, dot, defineChart } from "@tanstack/charts";
 import { scaleLinear } from "@tanstack/charts/scales/linear";
 import { scaleSqrt } from "d3-scale";
 import { tooltip } from "@tanstack/charts/tooltip";
@@ -47,7 +47,7 @@ type MovementSummary = {
   values: Record<MetricKey, number>;
 };
 
-/** One chart point per SET of the workout: reps (x), weight (y), and
+/** One chart point per RUN of ONE movement: reps (x), weight (y), and
  * volume = weight × reps (the bubble's painted area). */
 type SetSample = {
   reps: number;
@@ -80,19 +80,19 @@ const ordinalLabel = (position: number) => {
   return `${position}${suffixes[position % 10] ?? "th"}`;
 };
 
-function SetBubbleChart({
-  samples,
-  movementColors,
+function MovementBubbleChart({
+  runs,
+  movementColor,
   ariaLabel,
 }: {
-  samples: SetSample[];
-  movementColors: { movementName: string; color: string }[];
+  runs: SetSample[];
+  movementColor: string;
   ariaLabel: string;
 }): JSX.Element {
   // d3 scaleSqrt over [0, maxVolume] → [0, MAX_BUBBLE_RADIUS]: scaleSqrt maps
   // radius = sqrt(volume normalized), so the PAINTED AREA of each bubble is
   // proportional to that set's volume (weight × reps).
-  const maxVolume = Math.max(...samples.map((sample) => sample.volume), 1);
+  const maxVolume = Math.max(...runs.map((run) => run.volume), 1);
   const radiusScale = scaleSqrt<number>()
     .domain([0, maxVolume])
     .range([0, MAX_BUBBLE_RADIUS]);
@@ -101,10 +101,14 @@ function SetBubbleChart({
     <Chart
       definition={defineChart({
         marks: [
-          // One bubble per SET. Points sharing identical (reps, weight)
+          // The movement's own runs connected in PERFORMED order (1st run →
+          // 2nd run → …): `lineY` draws through the datum order. `lineY`
+          // renders nothing for a single-point series; the dot covers it.
+          lineY(runs, { x: "reps", y: "weight", color: "movementName" }),
+          // One bubble per RUN. Points sharing identical (reps, weight)
           // overlap exactly — accepted trade-off per the ADDENDUM 6 ruling
-          // (the run list in the resume enumerates those runs explicitly).
-          dot(samples, {
+          // (the run list below enumerates those runs explicitly).
+          dot(runs, {
             x: "reps",
             y: "weight",
             r: "volume",
@@ -113,13 +117,11 @@ function SetBubbleChart({
             fillOpacity: 0.75,
           }),
         ],
-        // The per-movement color → label legend is rendered in-page (a single
-        // flex-wrap row above the chart, sharing this exact domain/range
-        // mapping) — in-chart colorLegend items collided when charts sat
-        // side by side (repair of the ADDENDUM 5 defect).
+        // One series per chart (this movement only): the color scale maps its
+        // name to the same palette color the movement blocks/chart headings use.
         color: {
-          domain: movementColors.map(({ movementName }) => movementName),
-          range: movementColors.map(({ color }) => color),
+          domain: runs.map((run) => run.movementName),
+          range: [movementColor],
         },
         scales: {
           x: {
@@ -181,17 +183,12 @@ function WorkoutHistoryPage() {
   const selectedDate = selectedWorkout?.completedAt
     ? dateFormat.format(new Date(selectedWorkout.completedAt))
     : "-";
-  // Charts consume `workout.sets` in NATURAL DB ORDER (no migration; the user
-  // ruling explicitly relies on the row order the server fn returns — Postgres
-  // does not guarantee it; if it ever proves flaky, the fix is a Set.createdAt
-  // migration, out of scope now). Each set becomes one bubble: reps on x,
-  // weight on y, volume = weight × reps as the bubble's painted area.
-  const setSamples: SetSample[] = (selectedWorkout?.sets ?? []).map((set) => ({
-    reps: set.reps,
-    weight: set.weight,
-    volume: set.weight * set.reps,
-    movementName: set.movement.name,
-  }));
+  // Chart runs consume `workout.sets` in NATURAL DB ORDER (no migration; the
+  // user ruling explicitly relies on the row order the server fn returns —
+  // Postgres does not guarantee it; if it ever proves flaky, the fix is a
+  // Set.createdAt migration, out of scope now). Each movement's runs come
+  // from that natural order via `runsByMovement` below and are charted in
+  // PERFORMED order; the connection line must follow it, not the x axis.
   // Distinct movements in order of appearance (Map preserves insertion order)
   // drive the deterministic palette so a movement keeps the same color across
   // all three charts and the legend; the numbers blocks stay alphabetical.
@@ -218,7 +215,7 @@ function WorkoutHistoryPage() {
       movementName,
       values: valuesByMovement.get(movementId)!,
     }));
-  // Same movement ⇒ same color across the bubble chart and the legend
+  // Same movement ⇒ same color across its chart (line + dots) and heading
   // (assigned by appearance order; cycles deterministically beyond the
   // palette size).
   const movementColors = appearanceOrder.map(([movementId, movementName], index) => ({
@@ -289,43 +286,36 @@ function WorkoutHistoryPage() {
             <p className="text-sm text-slate-500">No movements in this workout.</p>
           ) : (
             <div className="space-y-6">
-              <div className="space-y-4">
-                {/* One shared legend row for all three charts: same
-                    movement → color mapping as the charts' color scale,
-                    flex-wrap so labels can never collide. */}
-                <div className="flex flex-wrap gap-x-6 gap-y-2">
-                  {movementColors.map((movement) => (
-                    <span
-                      key={movement.movementId}
-                      className="flex items-center gap-2 text-xs text-slate-600">
-                      <span
-                        aria-hidden="true"
-                        className="h-2.5 w-2.5 rounded-full"
-                        style={{ backgroundColor: movement.color }}
-                      />
-                      {movement.movementName}
-                    </span>
-                  ))}
-                </div>
-                {/* One bubble chart for the whole workout: x = reps, y =
-                    weight, area = volume (weight × reps), one bubble per set,
-                    colored per movement; the shared legend above names the
-                    colors. */}
-                <SetBubbleChart
-                  samples={setSamples}
-                  movementColors={movementColors}
-                  ariaLabel={`${selectedDate} — weight vs reps (area = volume)`}
-                />
-                {/* Visible encoding caption so the third metric is readable. */}
-                <p className="text-xs text-slate-500">Area = volume (weight × reps)</p>
-              </div>
+              {/* One encoding caption for all charts. */}
+              <p className="text-xs text-slate-500">Area = volume (weight × reps)</p>
               {movementSummaries.map((movement) => (
                 <div key={movement.movementId} className="space-y-2">
+                  {/* Chart heading = movement name (identifies the chart's
+                      color; replaces the former cross-chart legend). */}
                   <p className="font-medium">{movement.movementName}</p>
+                  {/* One bubble chart per movement (alphabetical with the
+                      blocks), directly above this movement's run list and
+                      aggregates; only its own runs are charted, connected in
+                      performed order. */}
+                  <MovementBubbleChart
+                    runs={runsByMovement
+                      .get(movement.movementId)!
+                      .map((run) => ({
+                        reps: run.reps,
+                        weight: run.weight,
+                        volume: run.weight * run.reps,
+                        movementName: movement.movementName,
+                      }))}
+                    movementColor={
+                      movementColors.find(
+                        (movementColor) => movementColor.movementId === movement.movementId,
+                      )!.color
+                    }
+                    ariaLabel={`${movement.movementName} — weight vs reps (area = volume) on ${selectedDate}`}
+                  />
                   {/* Each run of the movement, in performed order. The run
                       ordinal counts this movement's runs (1st/2nd run of the
-                      movement), while the charts index sets by their position
-                      within the whole workout. */}
+                      movement). */}
                   <ul className="space-y-1">
                     {runsByMovement.get(movement.movementId)!.map((run, index) => (
                       <li key={index} className="text-xs text-slate-500">
