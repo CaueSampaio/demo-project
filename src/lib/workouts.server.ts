@@ -1,10 +1,11 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getServerSidePrismaClient } from "@/lib/db.server";
 import { authMiddleware } from "@/lib/auth.server";
+import { csrfMiddleware } from "@/lib/csrf.server";
 import { z } from "zod";
 
 export const createWorkoutServerFn = createServerFn({ method: "POST" })
-  .middleware([authMiddleware])
+  .middleware([csrfMiddleware, authMiddleware])
   .handler(async ({ context }) => {
     const prisma = await getServerSidePrismaClient();
     const workout = await prisma.workout.create({
@@ -33,7 +34,7 @@ export const getCurrentWorkoutServerFn = createServerFn()
   });
 
 export const completeWorkoutServerFn = createServerFn({ method: "POST" })
-  .middleware([authMiddleware])
+  .middleware([csrfMiddleware, authMiddleware])
   .handler(async ({ context }) => {
     const prisma = await getServerSidePrismaClient();
     const workout = await prisma.workout.findFirst({
@@ -50,7 +51,7 @@ export const completeWorkoutServerFn = createServerFn({ method: "POST" })
   });
 
 export const addSetServerFn = createServerFn({ method: "POST" })
-  .middleware([authMiddleware])
+  .middleware([csrfMiddleware, authMiddleware])
   .inputValidator(z.object({ movementId: z.string(), reps: z.number().min(1), weight: z.number().min(0) }))
   .handler(
     async ({
@@ -81,7 +82,7 @@ export const addSetServerFn = createServerFn({ method: "POST" })
   );
 
 export const deleteSetServerFn = createServerFn({ method: "POST" })
-  .middleware([authMiddleware])
+  .middleware([csrfMiddleware, authMiddleware])
   .inputValidator(z.object({ setId: z.string() }))
   .handler(async ({ context, data }: { context: { user: { id: string } }; data: { setId: string } }) => {
     const prisma = await getServerSidePrismaClient();
@@ -113,7 +114,7 @@ export const getWorkoutHistoryServerFn = createServerFn()
   });
 
 export const deleteWorkoutsServerFn = createServerFn({ method: "POST" })
-  .middleware([authMiddleware])
+  .middleware([csrfMiddleware, authMiddleware])
   .inputValidator(z.object({ workoutIds: z.array(z.string()) }))
   .handler(async ({ context, data }: { context: { user: { id: string } }; data: { workoutIds: string[] } }) => {
     const prisma = await getServerSidePrismaClient();

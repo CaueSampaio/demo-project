@@ -1,10 +1,11 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getServerSidePrismaClient } from "@/lib/db.server";
 import { authMiddleware } from "@/lib/auth.server";
+import { csrfMiddleware } from "@/lib/csrf.server";
 import { z } from "zod";
 
 export const addBodyWeightServerFn = createServerFn({ method: "POST" })
-  .middleware([authMiddleware])
+  .middleware([csrfMiddleware, authMiddleware])
   .inputValidator(z.object({ weightLbs: z.number().int().min(1).max(1500) }))
   .handler(async ({ context, data }: { context: { user: { id: string } }; data: { weightLbs: number } }) => {
     const prisma = await getServerSidePrismaClient();
@@ -39,7 +40,7 @@ export const getLatestBodyWeightServerFn = createServerFn()
   });
 
 export const deleteWeightServerFn = createServerFn({ method: "POST" })
-  .middleware([authMiddleware])
+  .middleware([csrfMiddleware, authMiddleware])
   .inputValidator(z.object({ id: z.string() }))
   .handler(async ({ context, data }: { context: { user: { id: string } }; data: { id: string } }) => {
     const prisma = await getServerSidePrismaClient();

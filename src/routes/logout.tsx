@@ -1,6 +1,6 @@
 import { logoutServerFn } from "@/lib/auth.server";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
-import { useEffect } from "react";
+import type { FormEvent } from "react";
 
 export const Route = createFileRoute("/logout")({
   component: LogoutPage,
@@ -9,11 +9,16 @@ export const Route = createFileRoute("/logout")({
 function LogoutPage() {
   const router = useRouter();
 
-  useEffect(() => {
+  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
     logoutServerFn().then(() => {
       router.navigate({ to: "/sign-in" });
     });
-  }, [router]);
+  };
 
-  return <div>Logging out...</div>;
+  return (
+    <form method="post" onSubmit={handleSubmit}>
+      <button type="submit">Log out</button>
+    </form>
+  );
 }
