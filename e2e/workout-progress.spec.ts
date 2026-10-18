@@ -70,14 +70,14 @@ test.describe("workout-history details", () => {
     // W3's single Alpha run appears in the resume as a per-run line.
     await expect(page.getByText(/1st: 140 lbs × 12/)).toBeVisible();
 
-    // ONE bubble chart for the whole workout: x = reps, y = weight, area =
-    // volume, colored per movement (W3's single set exercises the core case).
+    // ONE bubble chart PER MOVEMENT (W3 has only Alpha here): x = reps,
+    // y = weight, area = volume, colored per movement; the chart heading
+    // names it instead of a legend. The encoding caption stays.
     await expect(
       page.getByRole("img", {
-        name: `${day(daysAgo(1))} — weight vs reps (area = volume)`,
+        name: `Alpha Bench — weight vs reps (area = volume) on ${day(daysAgo(1))}`,
       }),
     ).toBeVisible();
-    // The chart explains its third metric in a visible caption.
     await expect(page.getByText(/Area = volume \(weight × reps\)/)).toBeVisible();
   });
 
@@ -122,13 +122,22 @@ test.describe("workout-history details", () => {
     await expect(page.getByText(/240\s+lbs/).first()).toBeVisible();
     await expect(page.getByText(/1,200/)).toBeVisible();
 
-    // The charts follow the selection: the W2 date replaces the W3 date in
-    // the bubble chart's accessible name (chart internals are trusted to the lib).
+    // The charts follow the selection: W2's two movement charts replace W3's
+    // (chart internals are trusted to the lib).
     await expect(
-      page.getByRole("img", { name: `${day(daysAgo(2))} — weight vs reps (area = volume)` }),
+      page.getByRole("img", {
+        name: `Alpha Bench — weight vs reps (area = volume) on ${day(daysAgo(2))}`,
+      }),
     ).toBeVisible();
     await expect(
-      page.getByRole("img", { name: `${day(daysAgo(1))} — weight vs reps (area = volume)` }),
+      page.getByRole("img", {
+        name: `Zulu Squat — weight vs reps (area = volume) on ${day(daysAgo(2))}`,
+      }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("img", {
+        name: `Alpha Bench — weight vs reps (area = volume) on ${day(daysAgo(1))}`,
+      }),
     ).toHaveCount(0);
   });
 

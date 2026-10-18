@@ -60,9 +60,11 @@ test("progress crud flow: create, read, update, complete, details, delete", asyn
   await expect(page.getByText(/10\s+reps/)).toBeVisible();
   await expect(page.getByText(/1,350/)).toBeVisible();
 
-  // ONE bubble chart for the whole workout.
+  // One bubble chart per movement (the flow workout has only one).
   await expect(
-    page.getByRole("img", { name: `${completedToday} — weight vs reps (area = volume)` }),
+    page.getByRole("img", {
+      name: `${name} — weight vs reps (area = volume) on ${completedToday}`,
+    }),
   ).toBeVisible();
 
   // 6. Movement chart: one dot, and the tooltip switches metric to volume.
