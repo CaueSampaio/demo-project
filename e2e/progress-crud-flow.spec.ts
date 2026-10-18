@@ -53,10 +53,17 @@ test("progress crud flow: create, read, update, complete, details, delete", asyn
     "aria-pressed",
     "true",
   );
-  await expect(page.getByText(name)).toBeVisible();
+  await expect(page.getByRole("paragraph").filter({ hasText: name })).toBeVisible();
   await expect(page.getByText(/135\s+lbs/)).toBeVisible();
   await expect(page.getByText(/10\s+reps/)).toBeVisible();
   await expect(page.getByText(/1,350/)).toBeVisible();
+
+  // Three bar charts for the selected workout (only movement = Flow Bench).
+  for (const label of ["Max Weight", "Total Reps", "Total Volume"]) {
+    await expect(
+      page.getByRole("img", { name: `${completedToday} — ${label} by movement` }),
+    ).toBeVisible();
+  }
 
   // 6. Movement chart: one dot, and the tooltip switches metric to volume.
   await page.getByRole("link", { name: "Movements" }).click();
