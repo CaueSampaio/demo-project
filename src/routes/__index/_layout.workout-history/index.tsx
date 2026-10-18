@@ -7,7 +7,7 @@ import { Trash2 } from "lucide-react";
 import { workoutHistoryQueryOptions } from "./-queries/workout-history";
 import { useSuspenseQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { JSX } from "react";
-import { dot, colorLegend, colorLegendItems, defineChart, lineY } from "@tanstack/charts";
+import { dot, defineChart, lineY } from "@tanstack/charts";
 import { scaleLinear } from "@tanstack/charts/scales/linear";
 import { tooltip } from "@tanstack/charts/tooltip";
 import { Chart } from "@tanstack/charts/react";
@@ -110,13 +110,13 @@ function MetricSetChart({
           lineY(rows, { x: "setIndex", y: "value", color: "movementName" }),
           dot(rows, { x: "setIndex", y: "value", color: "movementName" }),
         ],
+        // The per-movement color → label legend is rendered in-page (a single
+        // flex-wrap row above the chart stack, sharing this exact domain/
+        // range mapping) — in-chart colorLegend items collided when three
+        // ~300px charts sat side by side (repair of the ADDENDUM 5 defect).
         color: {
           domain: movementColors.map(({ movementName }) => movementName),
           range: movementColors.map(({ color }) => color),
-          legend: colorLegend({
-            placement: "bottom",
-            items: colorLegendItems({ indicator: { shape: "dot" } }),
-          }),
         },
         scales: {
           // x = set sequence position within the workout; ticks show ordinals
@@ -290,7 +290,26 @@ function WorkoutHistoryPage() {
             <p className="text-sm text-slate-500">No movements in this workout.</p>
           ) : (
             <div className="space-y-6">
-              <div className="grid gap-6 lg:grid-cols-3">
+              <div className="space-y-4">
+                {/* One shared legend row for all three charts: same
+                    movement → color mapping as the charts' color scale,
+                    flex-wrap so labels can never collide. */}
+                <div className="flex flex-wrap gap-x-6 gap-y-2">
+                  {movementColors.map((movement) => (
+                    <span
+                      key={movement.movementId}
+                      className="flex items-center gap-2 text-xs text-slate-600">
+                      <span
+                        aria-hidden="true"
+                        className="h-2.5 w-2.5 rounded-full"
+                        style={{ backgroundColor: movement.color }}
+                      />
+                      {movement.movementName}
+                    </span>
+                  ))}
+                </div>
+                {/* Full-width charts, stacked: each metric's trajectory gets
+                    room for every set position and its y-axis label. */}
                 {METRICS.map(({ key, label }) => (
                   <MetricSetChart
                     key={key}

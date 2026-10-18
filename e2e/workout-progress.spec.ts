@@ -114,7 +114,8 @@ test.describe("workout-history details", () => {
     await expect(page.getByRole("paragraph").filter({ hasText: "Alpha Bench" })).toBeVisible();
     await expect(page.getByText(/150\s+lbs/).first()).toBeVisible();
     await expect(page.getByText(/6\s+reps/)).toBeVisible();
-    await expect(page.getByText(/900/)).toBeVisible();
+    // "900 volume" (not a bare /900/: full-width y-axes can show a 900 tick).
+    await expect(page.getByText(/900\s+volume/)).toBeVisible();
 
     await expect(page.getByRole("paragraph").filter({ hasText: "Zulu Squat" })).toBeVisible();
     await expect(page.getByText(/240\s+lbs/).first()).toBeVisible();
