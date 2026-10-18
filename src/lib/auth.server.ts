@@ -5,6 +5,7 @@ import { createMiddleware, createServerFn } from "@tanstack/react-start";
 import { sessionCookieName } from "./auth.consts";
 import { configService } from "./config.server";
 import { getServerSidePrismaClient } from "./db.server";
+import { hashPassword, isPasswordHash, verifyPassword } from "./password.server";
 import { z } from "zod";
 
 // Single source of truth: the secret is resolved and fail-fast validated when
@@ -69,6 +70,7 @@ export const getUserServerFn = createServerFn().handler(async () => {
   const prisma = await getServerSidePrismaClient();
   const user = await prisma.user.findUnique({
     where: { id: userId },
+    select: { id: true, email: true, name: true, createdAt: true },
   });
 
   return user;
@@ -78,7 +80,7 @@ export const getUserServerFn = createServerFn().handler(async () => {
  * Signs in a user with email and password
  */
 export const signInServerFn = createServerFn({ method: "POST" })
-  .inputValidator(z.object({ email: z.string().email(), password: z.string() }))
+  .inputValidator(z.object({ email: z.string().email(), password: z.string().min(1).max(128) }))
   .handler(async ({ data }: { data: { email: string; password: string } }) => {
     const { email, password } = data;
 
@@ -87,7 +89,23 @@ export const signInServerFn = createServerFn({ method: "POST" })
       where: { email },
     });
 
-    if (!user || user.password !== password) {
+    let valid = false;
+    if (user && isPasswordHash(user.password)) {
+      valid = await verifyPassword(password, user.password);
+    } else if (user) {
+      // Legacy plaintext row: compare directly, then lazily migrate it to an
+      // argon2id hash on successful sign-in. (Task 5 swaps `===` for a
+      // constant-time comparison.)
+      valid = password === user.password;
+      if (valid) {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { password: await hashPassword(password) },
+        });
+      }
+    }
+
+    if (!user || !valid) {
       return { success: false as const, error: "Invalid email or password" };
     }
 
@@ -100,7 +118,7 @@ export const signInServerFn = createServerFn({ method: "POST" })
  * Creates a new user account
  */
 export const createAccountServerFn = createServerFn({ method: "POST" })
-  .inputValidator(z.object({ email: z.email(), name: z.string().min(1), password: z.string().min(6) }))
+  .inputValidator(z.object({ email: z.email(), name: z.string().min(1), password: z.string().min(6).max(128) }))
   .handler(async ({ data }: { data: { email: string; name: string; password: string } }) => {
     const { email, name, password } = data;
 
@@ -115,7 +133,7 @@ export const createAccountServerFn = createServerFn({ method: "POST" })
     }
 
     const user = await prisma.user.create({
-      data: { email, name, password },
+      data: { email, name, password: await hashPassword(password) },
     });
 
     setSessionCookie(user.id);
