@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { createTestUser, sessionCookieFor, seedWeights, testPrisma } from "./helpers/auth";
+import { waitForHydration } from "./helpers/hydration";
 
 /** Movements are global (no userId) — unique names avoid cross-test/run collisions. */
 const unique = (base: string) => `${base} ${Date.now()}-${Math.floor(Math.random() * 10_000)}`;
@@ -26,24 +27,6 @@ function trackLatestWeightRequests(page: Page): string[] {
     }
   });
   return urls;
-}
-
-/**
- * Dev-mode hydration attaches React after the `load` event, so a `change`
- * event fired before then is lost and controlled state keeps its initial
- * value (selectOption would silently no-op). Wait for a React fiber key to
- * appear in the app root before driving the form.
- */
-async function waitForHydration(page: Page) {
-  await expect
-    .poll(async () =>
-      page.evaluate(() =>
-        [...document.querySelectorAll("main *")].some((el) =>
-          Object.keys(el).some((k) => k.startsWith("__reactFiber")),
-        ),
-      ),
-    )
-    .toBe(true, { timeout: 15_000 });
 }
 
 test.describe("body-weight movements", () => {
