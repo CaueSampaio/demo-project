@@ -1,4 +1,4 @@
-import { logoutServerFn } from "@/lib/auth.server";
+import { logoutServerFn } from "@/lib/auth.functions";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import type { FormEvent } from "react";
 

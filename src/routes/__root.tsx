@@ -8,11 +8,11 @@ import {
 import { useEffect, useState } from "react";
 import styles from "../styles.css?url";
 import { type QueryClient } from "@tanstack/react-query";
-import { getUserServerFn } from "@/lib/auth.server";
+import { getUserServerFn } from "@/lib/auth.functions";
 import { TanStackDevtools } from "@tanstack/react-devtools";
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 import { ReactQueryDevtoolsPanel } from "@tanstack/react-query-devtools";
-import { useClientConfig } from "@/lib/config.client";
+import { useClientConfig } from "@/lib/config";
 import { AlertTriangle, RefreshCw, Home, Bug, Copy, Check } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";

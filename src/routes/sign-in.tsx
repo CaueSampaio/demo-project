@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { signInServerFn } from "@/lib/auth.server";
+import { signInServerFn } from "@/lib/auth.functions";
 
 export const Route = createFileRoute("/sign-in")({
   beforeLoad: ({ context }) => {
