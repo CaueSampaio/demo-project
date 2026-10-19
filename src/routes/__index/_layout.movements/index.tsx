@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { createMovementServerFn } from "@/lib/movements.functions";
@@ -94,7 +95,9 @@ function MovementsPage() {
             <ul className="space-y-2">
               {movements.map((movement) => (
                 <li key={movement.id} className="px-3 py-2 bg-slate-50 rounded-lg text-sm font-medium text-slate-700">
-                  {movement.name}
+                  <Link to="/movements/$movementId" params={{ movementId: movement.id }}>
+                    {movement.name}
+                  </Link>
                 </li>
               ))}
             </ul>

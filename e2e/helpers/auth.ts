@@ -73,6 +73,64 @@ export async function seedWeights(
 }
 
 /**
+ * Seeds a completed workout for a user directly in the dev database and
+ * returns its id. Movements are global (no userId) with non-unique names, so
+ * each unique movement is resolved find-first-or-create (`isBodyweight: false`
+ * on created movements unless a `{ name, isBodyweight }` spec is given, since
+ * string names are shorthand for regular movements). `completedAt` uses the
+ * same `daysAgo` pattern as `seedWeights`.
+ */
+export async function seedCompletedWorkout(
+  userId: string,
+  workout: {
+    daysAgo: number;
+    sets: {
+      movementName: string | { name: string; isBodyweight: boolean };
+      weight: number;
+      reps: number;
+    }[];
+  },
+): Promise<string> {
+  const prisma = getTestPrismaClient();
+
+  const movementIds = new Map<string, string>();
+  const specs = new Map<string, { name: string; isBodyweight: boolean }>();
+  for (const set of workout.sets) {
+    const spec =
+      typeof set.movementName === "string"
+        ? { name: set.movementName, isBodyweight: false }
+        : set.movementName;
+    specs.set(spec.name, spec);
+  }
+  for (const spec of specs.values()) {
+    let movement = await prisma.movement.findFirst({ where: { name: spec.name } });
+    if (!movement) {
+      movement = await prisma.movement.create({
+        data: { name: spec.name, isBodyweight: spec.isBodyweight },
+      });
+    }
+    movementIds.set(spec.name, movement.id);
+  }
+
+  const created = await prisma.workout.create({
+    data: { userId, completedAt: new Date(Date.now() - workout.daysAgo * 86_400_000) },
+  });
+
+  await prisma.set.createMany({
+    data: workout.sets.map((set) => ({
+      workoutId: created.id,
+      movementId: movementIds.get(
+        typeof set.movementName === "string" ? set.movementName : set.movementName.name,
+      )!,
+      reps: set.reps,
+      weight: set.weight,
+    })),
+  });
+
+  return created.id;
+}
+
+/**
  * Forges the signed session cookie the server would set, so tests skip the
  * auth flow. Signature matches src/lib/auth.server.ts (HMAC-SHA256 of the
  * user ID keyed with COOKIE_SECRET).
