@@ -1,8 +1,11 @@
 import { createFileRoute, Link, redirect, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { AlertCircle } from "lucide-react";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Field } from "@/components/ui/field";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { signInServerFn } from "@/lib/auth.functions";
 
 export const Route = createFileRoute("/sign-in")({
@@ -41,58 +44,77 @@ function SignInPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center space-y-2">
-          <img src="/wordmark.svg" alt="Logo" className="h-8 mx-auto" />
-          <CardTitle className="text-2xl font-semibold text-gray-900">Sign in to your account</CardTitle>
-          <p className="text-sm text-gray-500">Enter your credentials to continue</p>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {error && (
-              <div className="p-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg">{error}</div>
-            )}
-            <div className="space-y-2">
-              <label htmlFor="email" className="text-sm font-medium text-gray-700">
-                Email
-              </label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                autoComplete="email"
-              />
-            </div>
-            <div className="space-y-2">
-              <label htmlFor="password" className="text-sm font-medium text-gray-700">
-                Password
-              </label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                autoComplete="current-password"
-              />
-            </div>
-            <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? "Signing in..." : "Sign in"}
-            </Button>
-          </form>
-          <p className="mt-4 text-center text-sm text-gray-500">
-            Don't have an account?{" "}
-            <Link to="/create-account" className="text-primary hover:underline font-medium">
-              Create one
-            </Link>
+    <div className="h-dvh overflow-y-auto bg-background lg:grid lg:grid-cols-2 lg:overflow-hidden">
+      <aside className="hidden flex-col justify-between bg-primary px-12 py-14 text-primary-foreground lg:flex">
+        <img
+          src="/wordmark.svg"
+          alt="Better Bookkeeping"
+          className="h-8 w-auto self-start"
+          style={{ filter: "brightness(0) invert(1)" }}
+        />
+        <div className="max-w-sm space-y-4">
+          <p className="text-3xl font-extrabold leading-tight tracking-tight">
+            Every set, every session, in one place.
           </p>
-        </CardContent>
-      </Card>
+          <p className="text-sm leading-relaxed text-primary-foreground/80">
+            Track your lifts, see your progress, and keep the bookkeeping out of your training.
+          </p>
+        </div>
+        <p className="text-xs text-primary-foreground/60">Better Bookkeeping</p>
+      </aside>
+
+      <div className="flex min-h-full items-center justify-center px-4 py-10 sm:px-6 lg:h-full lg:min-h-0 lg:px-10">
+        <div className="w-full max-w-md">
+          <div className="mb-6 flex justify-center lg:hidden">
+            <img src="/wordmark.svg" alt="Better Bookkeeping" className="h-8 w-auto" />
+          </div>
+          <Card className="p-6 md:p-8">
+            <h1 className="text-2xl font-extrabold tracking-tight text-card-foreground">Sign in to your account</h1>
+            <p className="mt-2 text-sm text-muted-foreground">Enter your credentials to continue</p>
+
+            <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+              {error && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+              <Field label="Email" htmlFor="email">
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  autoComplete="email"
+                />
+              </Field>
+              <Field label="Password" htmlFor="password">
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  autoComplete="current-password"
+                />
+              </Field>
+              <Button type="submit" className="w-full" disabled={isLoading} aria-busy={isLoading}>
+                {isLoading ? "Signing in..." : "Sign in"}
+              </Button>
+            </form>
+
+            <p className="mt-6 text-center text-sm text-muted-foreground">
+              Don't have an account?{" "}
+              <Link to="/create-account" className="font-medium text-primary hover:underline">
+                Create one
+              </Link>
+            </p>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 }

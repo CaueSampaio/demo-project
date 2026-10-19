@@ -54,13 +54,13 @@ ${error.stack || "No stack trace available"}`;
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+    <div className="flex min-h-dvh items-center justify-center bg-background px-4 py-10">
       <Card className="w-full max-w-lg">
         <CardHeader className="text-center">
-          <div className="mx-auto w-16 h-16 rounded-full bg-red-50 flex items-center justify-center mb-4">
-            <AlertTriangle className="w-8 h-8 text-red-600" />
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-destructive-surface">
+            <AlertTriangle className="h-8 w-8 text-destructive" />
           </div>
-          <CardTitle className="text-xl font-semibold text-gray-900">Something went wrong</CardTitle>
+          <CardTitle className="text-xl font-bold">Something went wrong</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <Alert variant="destructive">
@@ -71,7 +71,8 @@ ${error.stack || "No stack trace available"}`;
                 variant="ghost"
                 size="sm"
                 onClick={copyErrorToClipboard}
-                className="h-6 px-2 text-red-700 hover:bg-red-100">
+                aria-label={copied ? "Copied" : "Copy error details"}
+                className="h-11 w-11 px-0 text-destructive hover:bg-destructive-surface md:h-8 md:w-auto md:px-2">
                 {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
               </Button>
             </div>
@@ -83,7 +84,7 @@ ${error.stack || "No stack trace available"}`;
                   {error.stack && (
                     <details className="mt-2" open>
                       <summary className="cursor-pointer text-sm font-medium">Stack trace</summary>
-                      <pre className="mt-2 text-xs overflow-x-auto bg-red-100 p-2 rounded whitespace-pre-wrap break-words max-w-full">
+                      <pre className="mt-2 max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-control border border-destructive-border bg-background p-2 text-xs">
                         {error.stack}
                       </pre>
                     </details>
@@ -111,7 +112,7 @@ ${error.stack || "No stack trace available"}`;
 
           {!isDev && (
             <div className="text-center">
-              <p className="text-sm text-gray-500">Error ID: {Date.now().toString(36)}</p>
+              <p className="text-sm text-muted-foreground">Error ID: {Date.now().toString(36)}</p>
             </div>
           )}
         </CardContent>
