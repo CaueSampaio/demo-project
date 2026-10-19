@@ -118,7 +118,9 @@ test.describe("Workouts", () => {
 
       await page.getByRole("button", { name: "Complete Workout" }).click();
 
-      await expect(page.getByText("No active workout. Ready to start?")).toBeVisible();
+      // Completion redirects to the new workout's detail dialog.
+      await expect(page).toHaveURL(/\/workout-history\?workout=/);
+      await expect(page.getByRole("dialog")).toBeVisible();
 
       // The server-fn round-trip is not awaited by the click, so poll until durable.
       await expect(async () => {
@@ -142,10 +144,10 @@ test.describe("Workouts", () => {
       await expect(page.getByRole("listitem").filter({ hasText: movement.name })).toBeVisible();
 
       await page.getByRole("button", { name: "Complete Workout" }).click();
-      await expect(page.getByText("No active workout. Ready to start?")).toBeVisible();
-
-      await page.goto("/workout-history");
-      await expect(page.getByText(movement.name)).toBeVisible();
+      await expect(page).toHaveURL(/\/workout-history\?workout=/);
+      await expect(page.getByRole("dialog")).toBeVisible();
+      await page.getByRole("dialog").getByRole("tab", { name: movement.name }).click();
+      await expect(page.getByRole("dialog").getByRole("heading", { level: 3, name: movement.name })).toBeVisible();
     });
   });
 

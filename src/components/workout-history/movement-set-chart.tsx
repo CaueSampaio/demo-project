@@ -47,17 +47,37 @@ const TOOLTIP_STYLE = {
 function setChartDefinition(rows: SetRow[]) {
   const maxReps = Math.max(...rows.map((row) => row.reps), 1);
 
+  // An area/line needs one y per x. Multiple sets can share a weight (and even
+  // the same weight × reps), so the envelope uses the best set at each weight
+  // while every set still gets its own dot and tooltip.
+  const areaRows: SetRow[] = Array.from(
+    rows
+      .reduce((byWeight, row) => {
+        const current = byWeight.get(row.weight);
+        if (!current || row.reps > current.reps) {
+          byWeight.set(row.weight, row);
+        }
+        return byWeight;
+      }, new Map<number, SetRow>())
+      .values(),
+  ).sort((a, b) => a.weight - b.weight);
+
   return defineChart({
     marks: [
-      // The shaded area under the reps/weight line is the volume visual. The
+      // The shaded area under the reps/weight envelope is the volume visual. The
       // exact per-set volume remains in the tooltip and the set list.
-      areaY(rows, {
+      areaY(areaRows, {
         x: "weight",
         y: "reps",
         fill: SERIES_COLOR,
         fillOpacity: 0.16,
       }),
-      lineY(rows, { x: "weight", y: "reps", stroke: SERIES_COLOR, strokeWidth: 2 }),
+      lineY(areaRows, {
+        x: "weight",
+        y: "reps",
+        stroke: SERIES_COLOR,
+        strokeWidth: 2,
+      }),
       // Small points keep the eye on the set positions instead of oversized bubbles.
       dot(rows, {
         x: "weight",

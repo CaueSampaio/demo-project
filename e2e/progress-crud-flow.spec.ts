@@ -46,7 +46,11 @@ test("progress crud flow: create, read, update, complete, details, delete", asyn
   await expect(page.getByText("10 reps × 135 lbs")).toBeVisible();
 
   await page.getByRole("button", { name: "Complete Workout" }).click();
-  await expect(page.getByText("No active workout")).toBeVisible();
+
+  // Completion redirects straight to the new workout's detail dialog.
+  await expect(page).toHaveURL(/\/workout-history\?workout=/);
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
 
   // Completion writes `completedAt` server-side; capture the exact value so the
   // card's time-based accessible name cannot race a minute boundary.
@@ -61,17 +65,6 @@ test("progress crud flow: create, read, update, complete, details, delete", asyn
   }).toPass();
 
   const completedDate = completedAt!;
-
-  // History card opens the detail dialog: Overview volume chart, then the
-  // movement tab's weight × reps bubble chart and performed set text.
-  await page.getByRole("link", { name: "Workout History" }).click();
-  const checkDetails = page.getByRole("button", {
-    name: `Check details for workout ${day(completedDate)} at ${time(completedDate)}`,
-  });
-  await expect(checkDetails).toBeVisible();
-  await checkDetails.click();
-
-  const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
   await expect(dialog.getByRole("img", { name: `Volume by movement for ${day(completedDate)}` })).toBeVisible();
 

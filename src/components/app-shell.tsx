@@ -14,10 +14,10 @@ type AppShellProps = {
 
 /** The four destinations shared by the desktop sidebar and the mobile tabs. */
 const navItems = [
-  { to: "/current-workout", label: "Current Workout", icon: Dumbbell },
-  { to: "/workout-history", label: "Workout History", icon: History },
-  { to: "/movements", label: "Movements", icon: BicepsFlexed },
-  { to: "/profile", label: "Profile", icon: User },
+  { to: "/current-workout", label: "Current Workout", mobileLabel: "Workout", icon: Dumbbell },
+  { to: "/workout-history", label: "Workout History", mobileLabel: "History", icon: History },
+  { to: "/movements", label: "Movements", mobileLabel: "Movements", icon: BicepsFlexed },
+  { to: "/profile", label: "Profile", mobileLabel: "Profile", icon: User },
 ] as const;
 
 const linkFocusRing =
@@ -85,18 +85,8 @@ export function AppShell({ user, children }: AppShellProps) {
         </nav>
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-muted px-4 lg:hidden">
+          <header className="flex h-14 shrink-0 items-center border-b border-border bg-muted px-4 lg:hidden">
             <img src="/wordmark.svg" alt="Better Bookkeeping" className="h-6" />
-            <Link
-              to="/profile"
-              aria-label="Profile"
-              className={cn(
-                "flex h-11 w-11 items-center justify-center rounded-full bg-card text-muted-foreground transition-colors",
-                "hover:text-foreground",
-                linkFocusRing,
-              )}>
-              <User className="h-5 w-5" aria-hidden="true" />
-            </Link>
           </header>
 
           <main id="main-content" className="min-h-0 flex-1 overflow-y-auto">
@@ -107,14 +97,15 @@ export function AppShell({ user, children }: AppShellProps) {
             aria-label="Mobile"
             className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-muted pb-[env(safe-area-inset-bottom)] lg:hidden">
             <div className="mx-auto flex w-full max-w-6xl items-stretch">
-              {navItems.map(({ to, label, icon: Icon }) => (
+              {navItems.map(({ to, label, mobileLabel, icon: Icon }) => (
                 <Link
                   key={to}
                   to={to}
+                  aria-label={label !== mobileLabel ? label : undefined}
                   activeProps={{ "aria-current": "page" }}
                   className={cn(
-                    "group relative flex min-h-11 flex-1 basis-0 flex-col items-center justify-center gap-1 px-2 py-2",
-                    "text-xs font-medium text-muted-foreground transition-colors hover:text-foreground",
+                    "group relative flex min-h-11 flex-1 basis-0 flex-col items-center justify-center gap-1 px-1 py-2",
+                    "text-center text-[11px] font-medium leading-tight text-muted-foreground transition-colors hover:text-foreground",
                     "data-[status=active]:text-primary",
                     linkFocusRing,
                   )}>
@@ -123,7 +114,7 @@ export function AppShell({ user, children }: AppShellProps) {
                     className="absolute top-0 h-0.5 w-8 rounded-full bg-transparent group-data-[status=active]:bg-accent"
                   />
                   <Icon className="h-5 w-5" aria-hidden="true" />
-                  <span>{label}</span>
+                  <span className="block w-full text-center">{mobileLabel}</span>
                 </Link>
               ))}
             </div>

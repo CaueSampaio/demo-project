@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -46,6 +46,7 @@ const todayLong = () =>
 
 function CurrentWorkoutPage() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const { data: workout } = useSuspenseQuery(currentWorkoutQueryOptions());
   const { data: movements } = useSuspenseQuery(movementsQueryOptions());
   const [selectedMovement, setSelectedMovement] = useState("");
@@ -76,9 +77,13 @@ function CurrentWorkoutPage() {
 
   const completeWorkoutMutation = useMutation({
     mutationFn: () => completeWorkoutServerFn(),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: currentWorkoutQueryOptions().queryKey });
+    onSuccess: async (result) => {
+      await queryClient.invalidateQueries({ queryKey: currentWorkoutQueryOptions().queryKey });
+      await queryClient.invalidateQueries({ queryKey: ["workout-history"] });
       toast.success("Workout completed");
+      if (result.success && "workoutId" in result && result.workoutId) {
+        navigate({ to: "/workout-history", search: { workout: result.workoutId } });
+      }
     },
   });
 

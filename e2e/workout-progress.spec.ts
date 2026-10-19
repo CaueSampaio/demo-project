@@ -102,6 +102,31 @@ test.describe("workout-history details", () => {
     await expect(dialog.getByText(/2nd: 145 lbs × 8/)).toBeVisible();
   });
 
+  test("renders duplicate weight and reps sets without a chart error", async ({ authed }) => {
+    const { page, user } = authed;
+    const workoutId = await seedCompletedWorkout(user.id, {
+      daysAgo: 0.5,
+      sets: [
+        { movementName: "Alpha Bench", weight: 150, reps: 6 },
+        { movementName: "Alpha Bench", weight: 150, reps: 6 },
+      ],
+    });
+    const date = await completedAtOf(workoutId);
+
+    await page.goto("/workout-history");
+    await openWorkout(page, date);
+    const dialog = page.getByRole("dialog");
+    await dialog.getByRole("tab", { name: "Alpha Bench" }).click();
+
+    const chart = dialog.getByRole("img", {
+      name: `Alpha Bench — weight vs reps (area = volume) on ${day(date)}`,
+    });
+    await expect(chart).toBeVisible();
+    await expect.poll(() => chart.locator("circle").count(), { timeout: 15_000 }).toBe(2);
+    await expect(dialog.getByText(/1st: 150 lbs × 6/)).toBeVisible();
+    await expect(dialog.getByText(/2nd: 150 lbs × 6/)).toBeVisible();
+  });
+
   test("ignores sets from active workouts", async ({ authed }) => {
     const { page, user } = authed;
     // An active (not yet completed) workout with an Alpha Bench set must not

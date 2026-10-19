@@ -37,13 +37,15 @@ test.describe("mobile shell", () => {
     await authed.page.keyboard.press("Tab");
     await expect(authed.page.getByRole("link", { name: "Skip to main content" })).toBeFocused();
 
-    const profile = authed.page.getByRole("banner").getByRole("link", { name: "Profile" });
-    for (let i = 0; i < 5; i++) {
+    const history = authed.page
+      .getByRole("navigation", { name: "Mobile" })
+      .getByRole("link", { name: "Workout History" });
+    for (let i = 0; i < 10; i++) {
       await authed.page.keyboard.press("Tab");
-      if (await profile.evaluate((el) => el === document.activeElement)) break;
+      if (await history.evaluate((el) => el === document.activeElement)) break;
     }
-    await expect(profile).toBeFocused();
-    expect(await profile.evaluate((el) => getComputedStyle(el).boxShadow)).not.toBe("none");
+    await expect(history).toBeFocused();
+    expect(await history.evaluate((el) => getComputedStyle(el).boxShadow)).not.toBe("none");
   });
 
   test("shows bottom tabs, hides the sidebar, and avoids horizontal overflow", async ({ authed }) => {
@@ -52,12 +54,15 @@ test.describe("mobile shell", () => {
 
     await expect(authed.page.getByRole("navigation", { name: "Primary" })).toBeHidden();
     await expect(authed.page.getByRole("navigation", { name: "Mobile" })).toBeVisible();
+    await expect(authed.page.getByRole("banner").getByRole("link")).toHaveCount(0);
     expect(await authed.page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
 
-    await authed.page
+    const historyLink = authed.page
       .getByRole("navigation", { name: "Mobile" })
-      .getByRole("link", { name: "Workout History" })
-      .click();
+      .getByRole("link", { name: "Workout History" });
+    await expect(historyLink).toHaveCSS("text-align", "center");
+    await expect(historyLink).toContainText("History");
+    await historyLink.click();
     await expect(authed.page).toHaveURL(/\/workout-history$/);
     // Client-side navigation updates the URL before the destination renders;
     // wait for its content so the scroll container has its final height.

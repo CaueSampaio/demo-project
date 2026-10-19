@@ -49,7 +49,7 @@ export const completeWorkoutServerFn = createServerFn({ method: "POST" })
       where: { id: workout.id },
       data: { completedAt: new Date() },
     });
-    return { success: true };
+    return { success: true, workoutId: workout.id };
   });
 
 export const addSetServerFn = createServerFn({ method: "POST" })
