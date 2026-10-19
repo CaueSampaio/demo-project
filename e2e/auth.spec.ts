@@ -1,5 +1,5 @@
 import { type Page, type Response } from "@playwright/test";
-import { createAccount, expect, resetRateLimits, signIn, test, uniqueEmail } from "./fixtures";
+import { createAccount, expect, resetRateLimits, signIn, test, uniqueEmail, waitForFormHydration } from "./fixtures";
 import { testPrisma } from "./helpers/db";
 
 const SESSION_COOKIE = "session";
@@ -10,6 +10,7 @@ const TEST_PASSWORD = "e2test-password";
 /** Submits the sign-in form without retrying, so negative-path tests see the failure response. */
 async function submitSignInForm(page: Page, email: string, password: string): Promise<void> {
   await page.goto("/sign-in");
+  await waitForFormHydration(page);
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: "Sign in" }).click();
@@ -18,6 +19,7 @@ async function submitSignInForm(page: Page, email: string, password: string): Pr
 /** Signs out through the real /logout page and lands back on the sign-in screen. */
 async function logOut(page: Page): Promise<void> {
   await page.goto("/logout");
+  await waitForFormHydration(page);
   await page.getByRole("button", { name: "Log out" }).click();
   await expect(page).toHaveURL(/\/sign-in/);
 }

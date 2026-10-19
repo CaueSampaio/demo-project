@@ -41,6 +41,23 @@ export async function resetRateLimits(request: APIRequestContext): Promise<void>
 const MAX_AUTH_ATTEMPTS = 8;
 
 /**
+ * Waits until React has hydrated the first form on the page.
+ *
+ * `page.goto` can resolve after the HTML has loaded but before React attaches
+ * event handlers. Filling a controlled input in that window lets hydration
+ * restore it to its initial state, so a subsequent `required` field blocks the
+ * submit silently — the form never sends a request and no error appears.
+ * React tags hydrated DOM nodes with a `__reactProps$…` expando, which is the
+ * most direct signal available from the test side.
+ */
+export async function waitForFormHydration(page: Page): Promise<void> {
+  await page.waitForFunction(() => {
+    const form = document.querySelector("form");
+    return !!form && Object.keys(form).some((key) => key.startsWith("__reactProps$"));
+  });
+}
+
+/**
  * Submits an auth form and settles on the signed-in app, resetting the limiters
  * and retrying on a per-IP "Too many attempts" rejection.
  */
@@ -52,9 +69,15 @@ async function submitAuth(
 ): Promise<void> {
   for (let attempt = 0; attempt < MAX_AUTH_ATTEMPTS; attempt++) {
     await page.goto(authPath);
+    await waitForFormHydration(page);
     await submit();
 
-    const signedIn = page.getByText("Logged in as");
+    // The account footer is desktop-only; below `lg` the mobile tab bar is the
+    // signed-in marker living in the shell.
+    const signedIn = page
+      .getByText("Logged in as")
+      .filter({ visible: true })
+      .or(page.getByRole("navigation", { name: "Mobile" }));
     const rateLimited = page.getByText("Too many attempts");
     await expect(signedIn.or(rateLimited)).toBeVisible({ timeout: 15_000 });
     if (await signedIn.isVisible()) {

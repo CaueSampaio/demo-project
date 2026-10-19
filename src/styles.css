@@ -1,5 +1,114 @@
 @import "tailwindcss";
 
 @theme {
-  --color-primary: oklch(37.8% 0.077 168.94);
+  /* Paper & Ink palette */
+  --color-background: #FAF7F0;
+  --color-foreground: #171614;
+  --color-card: #FFFDF7;
+  --color-card-foreground: #171614;
+  --color-muted: #F1ECE1;
+  --color-muted-foreground: #5F5A50;
+  --color-border: #E1D8C8;
+  --color-input: #D8CEBD;
+  --color-primary: #224F6A;
+  --color-primary-foreground: #FFFFFF;
+  --color-secondary: #F1ECE1;
+  --color-secondary-foreground: #171614;
+  --color-accent: #F5C518;
+  --color-accent-foreground: #171614;
+  --color-destructive: #B42318;
+  --color-destructive-foreground: #FFFFFF;
+  --color-success: #067647;
+  --color-warning: #B54708;
+  --color-ring: #224F6A;
+  --color-chart-1: #224F6A;
+  --color-chart-2: #5B87A3;
+  --color-chart-3: #F5C518;
+  --color-chart-4: #8C6D00;
+  --color-chart-5: #A99F8D;
+
+  /* Soft status surfaces */
+  --color-destructive-surface: #FEF3F2;
+  --color-destructive-border: #FECDCA;
+  --color-success-surface: #ECFDF3;
+  --color-success-border: #ABEFC6;
+  --color-warning-surface: #FFFAEB;
+  --color-warning-border: #FEDF89;
+
+  --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
+
+  /* Radii: controls 10px, cards 1rem, dialogs 1.25rem */
+  --radius-control: 0.625rem;
+  --radius-card: 1rem;
+  --radius-dialog: 1.25rem;
+
+  /* Warm, barely visible shadows */
+  --shadow-xs: 0 1px 2px rgb(23 22 20 / 0.04);
+  --shadow-sm: 0 2px 8px rgb(23 22 20 / 0.06);
+  --shadow-md: 0 12px 32px rgb(23 22 20 / 0.1);
+}
+
+@layer base {
+  *,
+  ::before,
+  ::after {
+    border-color: var(--color-border);
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+
+  ::selection {
+    background-color: var(--color-primary);
+    color: var(--color-primary-foreground);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  /* Native select chevron, drawn with the muted-foreground token. */
+  .select-chevron {
+    background-image:
+      linear-gradient(45deg, transparent 50%, var(--color-muted-foreground) 50%),
+      linear-gradient(135deg, var(--color-muted-foreground) 50%, transparent 50%);
+    background-position:
+      calc(100% - 18px) calc(50% - 2px),
+      calc(100% - 13px) calc(50% - 2px);
+    background-size: 5px 5px;
+    background-repeat: no-repeat;
+  }
+}
+
+/* The TanStack devtools launcher is a body-level overlay; on phones it covers
+   the bottom tab bar and full-screen dialog controls, so keep it desktop-only. */
+@media (max-width: 1023px) {
+  [aria-label="Open TanStack Devtools"] {
+    display: none !important;
+  }
+}
+
+/* Keep overflowed dialog tabs discoverable with a thin horizontal scrollbar. */
+.tabs-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+.tabs-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+.tabs-scroll::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 999px;
+}
+.tabs-scroll::-webkit-scrollbar-track {
+  background: transparent;
 }

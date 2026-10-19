@@ -5,6 +5,7 @@ import { setupRouterSsrQueryIntegration } from "@tanstack/react-router-ssr-query
 import { routeTree } from "./routeTree.gen";
 import { QueryClient } from "@tanstack/react-query";
 import { toast } from "react-toastify";
+import { PageSkeleton } from "@/components/page-skeleton";
 
 // Create a new router instance
 export const getRouter = () => {
@@ -22,6 +23,8 @@ export const getRouter = () => {
     routeTree,
     context: { queryClient },
     defaultPreload: "intent",
+    defaultPendingComponent: PageSkeleton,
+    defaultPendingMs: 150,
   });
 
   setupRouterSsrQueryIntegration({

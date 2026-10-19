@@ -1,6 +1,5 @@
-import { createFileRoute, Link, Outlet, redirect } from "@tanstack/react-router";
-import { Dumbbell, History, BicepsFlexed, User, LogOut } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
+import { AppShell } from "@/components/app-shell";
 
 export const Route = createFileRoute("/__index/_layout")({
   component: RouteComponent,
@@ -10,49 +9,11 @@ export const Route = createFileRoute("/__index/_layout")({
   },
 });
 
-const navItems = [
-  { to: "/current-workout", label: "Current Workout", icon: Dumbbell },
-  { to: "/workout-history", label: "Workout History", icon: History },
-  { to: "/movements", label: "Movements", icon: BicepsFlexed },
-  { to: "/profile", label: "Profile", icon: User },
-] as const;
-
 function RouteComponent() {
   const { user } = Route.useRouteContext();
   return (
-    <div className="min-h-screen flex bg-slate-50">
-      <nav className="w-64 bg-white border-r border-slate-200 p-4 flex flex-col">
-        <img src="/wordmark.svg" alt="Logo" className="h-6 mb-8" />
-        <div className="flex flex-col gap-1 flex-1">
-          {navItems.map(({ to, label, icon: Icon }) => (
-            <Link
-              key={to}
-              to={to}
-              className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors [&.active]:bg-slate-100 [&.active]:text-slate-900">
-              <Icon className="w-4 h-4" />
-              {label}
-            </Link>
-          ))}
-        </div>
-        <div className="border-t border-slate-200 pt-4 mt-4 space-y-2">
-          <div className="flex items-center gap-3 px-3 py-2 text-sm text-slate-600">
-            <User className="w-4 h-4" />
-            <div className="truncate">
-              <p className="text-xs text-slate-400">Logged in as</p>
-              <p className="font-medium truncate">{user.name || user.email}</p>
-            </div>
-          </div>
-          <a href="/logout">
-            <Button variant="ghost" size="sm" className="w-full justify-start gap-3 text-slate-600">
-              <LogOut className="w-4 h-4" />
-              Log out
-            </Button>
-          </a>
-        </div>
-      </nav>
-      <main className="flex-1 p-6">
-        <Outlet />
-      </main>
-    </div>
+    <AppShell user={user}>
+      <Outlet />
+    </AppShell>
   );
 }

@@ -54,68 +54,71 @@ ${error.stack || "No stack trace available"}`;
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <Card className="w-full max-w-lg">
-        <CardHeader className="text-center">
-          <div className="mx-auto w-16 h-16 rounded-full bg-red-50 flex items-center justify-center mb-4">
-            <AlertTriangle className="w-8 h-8 text-red-600" />
-          </div>
-          <CardTitle className="text-xl font-semibold text-gray-900">Something went wrong</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Alert variant="destructive">
-            <Bug className="h-4 w-4" />
-            <div className="flex items-start justify-between">
-              <AlertTitle>Error Details</AlertTitle>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={copyErrorToClipboard}
-                className="h-6 px-2 text-red-700 hover:bg-red-100">
-                {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+    <div className="h-dvh overflow-y-auto bg-background px-4 py-10">
+      <div className="flex min-h-full items-center justify-center">
+        <Card className="w-full max-w-lg">
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-destructive-surface">
+              <AlertTriangle className="h-8 w-8 text-destructive" />
+            </div>
+            <CardTitle className="text-xl font-bold">Something went wrong</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Alert variant="destructive">
+              <Bug className="h-4 w-4" />
+              <div className="flex items-start justify-between">
+                <AlertTitle>Error Details</AlertTitle>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={copyErrorToClipboard}
+                  aria-label={copied ? "Copied" : "Copy error details"}
+                  className="h-11 w-11 px-0 text-destructive hover:bg-destructive-surface md:h-8 md:w-auto md:px-2">
+                  {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                </Button>
+              </div>
+              <AlertDescription className="mt-2">
+                {isDev ? (
+                  <div className="space-y-2">
+                    <p className="font-medium">{error.name}</p>
+                    <p className="text-sm">{error.message}</p>
+                    {error.stack && (
+                      <details className="mt-2" open>
+                        <summary className="cursor-pointer text-sm font-medium">Stack trace</summary>
+                        <pre className="mt-2 max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-control border border-destructive-border bg-background p-2 text-xs">
+                          {error.stack}
+                        </pre>
+                      </details>
+                    )}
+                  </div>
+                ) : (
+                  <p>
+                    We encountered an unexpected error. Please try refreshing the page or contact support if the problem
+                    persists.
+                  </p>
+                )}
+              </AlertDescription>
+            </Alert>
+
+            <div className="flex flex-col gap-2">
+              <Button onClick={reset} className="w-full">
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Try again
+              </Button>
+              <Button variant="outline" onClick={() => router.navigate({ to: "/" })} className="w-full">
+                <Home className="w-4 h-4 mr-2" />
+                Go to home
               </Button>
             </div>
-            <AlertDescription className="mt-2">
-              {isDev ? (
-                <div className="space-y-2">
-                  <p className="font-medium">{error.name}</p>
-                  <p className="text-sm">{error.message}</p>
-                  {error.stack && (
-                    <details className="mt-2" open>
-                      <summary className="cursor-pointer text-sm font-medium">Stack trace</summary>
-                      <pre className="mt-2 text-xs overflow-x-auto bg-red-100 p-2 rounded whitespace-pre-wrap break-words max-w-full">
-                        {error.stack}
-                      </pre>
-                    </details>
-                  )}
-                </div>
-              ) : (
-                <p>
-                  We encountered an unexpected error. Please try refreshing the page or contact support if the problem
-                  persists.
-                </p>
-              )}
-            </AlertDescription>
-          </Alert>
 
-          <div className="flex flex-col gap-2">
-            <Button onClick={reset} className="w-full">
-              <RefreshCw className="w-4 h-4 mr-2" />
-              Try again
-            </Button>
-            <Button variant="outline" onClick={() => router.navigate({ to: "/" })} className="w-full">
-              <Home className="w-4 h-4 mr-2" />
-              Go to home
-            </Button>
-          </div>
-
-          {!isDev && (
-            <div className="text-center">
-              <p className="text-sm text-gray-500">Error ID: {Date.now().toString(36)}</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+            {!isDev && (
+              <div className="text-center">
+                <p className="text-sm text-muted-foreground">Error ID: {Date.now().toString(36)}</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
@@ -165,7 +168,7 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
       },
       {
         rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Raleway:ital,wght@0,100..900;1,100..900&family=Roboto:ital,wght@0,100;0,300;0,400;0,500;0,700;0,900;1,100;1,300;1,400;1,500;1,700;1,900&display=swap",
+        href: "https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap",
       },
     ],
   }),
@@ -183,13 +186,13 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       <head>
         <HeadContent />
       </head>
-      <body className="overflow-hidden">
+      <body className="overflow-hidden bg-background text-foreground">
         {children}
         <ToastContainer position="top-right" autoClose={4000} theme="light" />
         {mounted && config.environment === "development" && (
           <TanStackDevtools
             config={{
-              position: "bottom-left",
+              position: "bottom-right",
             }}
             plugins={[
               {
