@@ -1,4 +1,4 @@
-import { getMovementsServerFn } from "@/lib/movements.server";
+import { getMovementsServerFn } from "@/lib/movements.functions";
 import { queryOptions } from "@tanstack/react-query";
 
 export const movementsQueryOptions = () =>
