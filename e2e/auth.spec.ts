@@ -4,16 +4,10 @@ import { testPrisma } from "./helpers/db";
 
 const SESSION_COOKIE = "session";
 
-// Matches TEST_PASSWORD in ./fixtures; spelled out here so the literal the
-// sign-up flow stores is explicit in the assertions below.
+// Must match TEST_PASSWORD in ./fixtures.
 const TEST_PASSWORD = "e2test-password";
 
-/**
- * Submits the sign-in form WITHOUT the success-oriented retry of `signIn`.
- * Negative-path tests (wrong password, rate limit, forged cross-origin POST)
- * must observe the form's failure response, so they cannot use `signIn`, which
- * polls until the signed-in app appears.
- */
+/** Submits the sign-in form without retrying, so negative-path tests see the failure response. */
 async function submitSignInForm(page: Page, email: string, password: string): Promise<void> {
   await page.goto("/sign-in");
   await page.getByLabel("Email").fill(email);
@@ -28,12 +22,7 @@ async function logOut(page: Page): Promise<void> {
   await expect(page).toHaveURL(/\/sign-in/);
 }
 
-/**
- * Submits the sign-in form on the ALREADY-LOADED page and resolves the reply
- * body once the sign-in server function responds. Used for the single
- * confirming attempt in the rate-limit test; negative-path tests that need a
- * fresh page use `submitSignInForm` instead.
- */
+/** Submits on the already-loaded page and returns the reply body (used for the confirming rate-limit attempt). */
 async function submitSignInAttempt(page: Page, email: string, password: string): Promise<string> {
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(password);
@@ -50,11 +39,8 @@ async function submitSignInAttempt(page: Page, email: string, password: string):
 }
 
 /**
- * Fires `count` concurrent sign-in submissions through the form's own submit
- * handler on the already-loaded page. The button self-disables while a request
- * is in flight (serializing ordinary clicks); `requestSubmit()` bypasses that
- * and exercises the real sign-in server function concurrently. Resolves only
- * after every reply has come back, so the caller observes a settled limiter.
+ * Fires `count` concurrent sign-in submits via `requestSubmit()`, bypassing the
+ * button's in-flight disable, and resolves once every reply has landed.
  */
 async function burstSignInAttempts(page: Page, email: string, count: number): Promise<void> {
   let pending = count;
@@ -99,8 +85,7 @@ test("sign-in accepts the correct password", async ({ page, request }) => {
   await resetRateLimits(request);
   const user = { name: "E2E User", email: uniqueEmail(), password: TEST_PASSWORD };
 
-  // Create through the real sign-up UI, then prove sign-in works on its own by
-  // ending the session and signing back in.
+  // Create through the real sign-up UI, then prove sign-in works on its own.
   await createAccount(page, request, user);
   await logOut(page);
 
@@ -125,9 +110,8 @@ test("sign-in rejects a wrong password with a generic error", async ({ page, req
       sawGeneric = true;
       break;
     }
-    // Concurrent workers can spend the shared per-IP signIn bucket (e.g. the
-    // rate-limit test), surfacing the limiter message instead of the credential
-    // error. Free the buckets and retry so the asserted path is still exercised.
+    // Other workers can exhaust the shared per-IP signIn bucket, surfacing the
+    // limiter message instead of the credential error; reset and retry.
     await resetRateLimits(request);
   }
 
@@ -169,25 +153,11 @@ test("password with special characters round-trips", async ({ page, request }) =
 });
 
 test("6th sign-in attempt in a minute is rate limited", async ({ page, request }) => {
-  // A worst-case run (ten rounds, each with an 8-request burst plus a 10s
-  // settle guard) can outlast the default 30s test timeout.
+  // Worst case (ten rounds, each an 8-request burst plus a settle guard) can outlast the default 30s timeout.
   test.setTimeout(90_000);
-  // The signIn bucket is 5/min per IP, but the dev reset endpoint frees the
-  // WHOLE per-IP budget and, under `fullyParallel`, other workers reset the
-  // limiter far more often than a serial UI loop can spend 5 attempts (~400ms of
-  // argon2 verification each). Semantics are unchanged — spending more than
-  // signIn.limit attempts within one minute must surface "Too many attempts" —
-  // but a naive serial loop can lose the reset race indefinitely.
-  //
-  // So drive the form's own submit handler in a genuine CONCURRENT burst: the
-  // button self-disables while a request is in flight (which would serialize the
-  // attempts), while `form.requestSubmit()` bypasses that and fires several real
-  // sign-in server-fn calls at once. Eight concurrent consumes exhaust the
-  // 5-point bucket within one limiter generation, so at least one reply carries
-  // the limiter message regardless of resets. The loop then stops and confirms
-  // the message reaches the user via one normal submission with nothing else in
-  // flight (the just-exhausted limiter rejects it instantly). Do NOT use the
-  // auto-retrying `signIn` helper here: it would retry the expected rejection.
+  // Other workers reset the whole per-IP budget far more often than a serial loop can
+  // spend 5 attempts, so fire 8 concurrent submits (`requestSubmit()` bypasses the
+  // button disable) to exhaust one limiter generation regardless of resets; never the retrying `signIn`.
   await resetRateLimits(request);
   const user = { name: "E2E User", email: uniqueEmail(), password: TEST_PASSWORD };
   await createAccount(page, request, user);
@@ -200,8 +170,7 @@ test("6th sign-in attempt in a minute is rate limited", async ({ page, request }
   let sawRateLimit = false;
   for (let round = 0; round < 10 && !sawRateLimit; round++) {
     await burstSignInAttempts(page, user.email, 8);
-    // The burst is fully settled now; a single confirming submission is the
-    // only reply in flight, so its message is what the UI renders.
+    // Burst is settled; this single submission is the only reply in flight.
     const body = await submitSignInAttempt(page, user.email, "wrong-password");
     sawRateLimit = body.includes(LIMIT_MESSAGE);
   }
@@ -216,14 +185,8 @@ test("cross-origin POST is rejected", async ({ page, request }) => {
   await createAccount(page, request, user);
   await logOut(page);
 
-  // Simulate a genuinely cross-site request. TanStack Start's native CSRF
-  // middleware trusts the browser-computed `Sec-Fetch-Site` header first, so a
-  // forged `Origin` alone is not enough: the browser recomputes
-  // `Sec-Fetch-Site: same-origin` for a same-origin target and the middleware
-  // trusts it. Re-targeting the server-function POST at a different origin
-  // (127.0.0.1 instead of localhost) makes the browser send
-  // `Sec-Fetch-Site: cross-site`, which the middleware rejects with 403 before
-  // any session cookie is issued.
+  // CSRF middleware trusts `Sec-Fetch-Site` first, so a forged `Origin` is not enough:
+  // retarget the POST at 127.0.0.1 so the browser sends `cross-site` and the middleware 403s.
   await page.route("**/_serverFn/**", (route) =>
     route.continue({
       url: route.request().url().replace("//localhost:4173/", "//127.0.0.1:4173/"),
@@ -233,7 +196,6 @@ test("cross-origin POST is rejected", async ({ page, request }) => {
 
   await submitSignInForm(page, user.email, user.password);
 
-  // Should not land in the app and no session cookie may be set.
   await page.waitForTimeout(2_000);
   expect(new URL(page.url()).pathname).not.toBe("/");
   const cookies = await page.context().cookies();

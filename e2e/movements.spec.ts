@@ -77,8 +77,7 @@ test.describe("Movements", () => {
       const az = unique("AZ Movement");
       const mz = unique("MZ Movement");
       const ze = unique("ZE Movement");
-      // Inserted reverse-alphabetically: the listing order must come from the
-      // query's `orderBy name asc`, not from insertion/row order.
+      // Inserted reverse-alphabetically to prove ordering comes from the query, not row order.
       await testPrisma.movement.createMany({ data: [{ name: ze }, { name: mz }, { name: az }] });
 
       await page.goto("/movements");

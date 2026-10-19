@@ -24,10 +24,8 @@ export type AuthedContext = {
 };
 
 /**
- * Clears the in-memory per-IP rate-limit buckets. The endpoint is a file route
- * protected by TanStack Start's strict CSRF middleware, which rejects requests
- * lacking Sec-Fetch-Site/Origin metadata; APIRequestContext sends none, so send
- * an explicit same-origin Origin header.
+ * Clears the in-memory per-IP rate-limit buckets. The file-route endpoint needs an
+ * explicit same-origin Origin header; APIRequestContext sends none.
  */
 export async function resetRateLimits(request: APIRequestContext): Promise<void> {
   const response = await request.post("/api/dev-reset-rate-limits", {
@@ -37,18 +35,14 @@ export async function resetRateLimits(request: APIRequestContext): Promise<void>
 }
 
 /**
- * Auth attempts per call. The create-account budget is 3/min per IP and the
- * defaults run `fullyParallel` with (CPU cores / 2) workers sharing one IP, so
- * a starting burst larger than 3 is normal. Every rejected attempt resets the
- * limiters (refilling the whole budget), so the loop needs `ceil(workers / 3)`
- * rounds to get every worker through; 8 covers up to 24 workers.
+ * Auth attempts per call. The 3/min per-IP create-account budget is shared by
+ * `fullyParallel` workers, so 8 retry rounds cover up to ~24 workers.
  */
 const MAX_AUTH_ATTEMPTS = 8;
 
 /**
- * Submits an auth form and settles on the signed-in app. Under `fullyParallel`
- * a burst of workers can exhaust the per-IP budget between resets, so a "Too
- * many attempts" rejection resets the limiters and retries.
+ * Submits an auth form and settles on the signed-in app, resetting the limiters
+ * and retrying on a per-IP "Too many attempts" rejection.
  */
 async function submitAuth(
   page: Page,
@@ -102,9 +96,8 @@ export async function signIn(
 }
 
 /**
- * Playwright `test` with an `authed` fixture: resets the rate limits, creates a
- * unique account through the UI, and resolves the new row's id so tests can
- * seed per-user data directly.
+ * `test` with an `authed` fixture: a unique account via the UI, resolving the
+ * new row's id so tests can seed per-user data directly.
  */
 export const test = base.extend<{ authed: AuthedContext }>({
   authed: async ({ page, request }, use) => {

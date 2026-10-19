@@ -81,8 +81,7 @@ test.describe("Workouts", () => {
 
       await page.goto("/workout-history");
 
-      // The seeded completed workout is listed as a pickable row, and its
-      // details (the movement, its single run, and the set-derived metrics) render.
+      // Seeded workout appears as a pickable row and its details render.
       await expect(page.getByRole("button", { name: `Select workout ${day(daysAgo(1))}` })).toBeVisible();
       await expect(page.getByRole("paragraph").filter({ hasText: movementName })).toBeVisible();
       await expect(page.getByText(/1st: 100 lbs × 8/)).toBeVisible();
@@ -171,10 +170,8 @@ test.describe("Workouts", () => {
 
     test("should allow selecting multiple workouts for deletion", async ({ authed }) => {
       const { page, user } = authed;
-      // NOTE: this app exposes one delete control per history row (no
-      // multi-select / select-all checkbox), so "selecting multiple workouts
-      // for deletion" is exercised as independently deletable rows: each
-      // deletion removes exactly the chosen workout and leaves the other.
+      // No multi-select UI: "selecting multiple" is exercised as independently
+      // deletable rows, each removing exactly the chosen workout and leaving the rest.
       await seedCompletedWorkout(user.id, {
         daysAgo: 1,
         sets: [{ movementName: unique("Deadlift"), weight: 100, reps: 8 }],

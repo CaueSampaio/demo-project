@@ -3,12 +3,8 @@ import { expect, test } from "./fixtures";
 import { seedCompletedWorkout, testPrisma } from "./helpers/db";
 
 /**
- * The chart's dot marks are painted on the client only after the container is
- * measured (requestAnimationFrame + ResizeObserver), so the server-rendered SVG
- * starts empty. On cold/parallel full runs that first paint can outlast
- * Playwright's default 5s assertion timeout, which read as "chart renders 0
- * circles". Poll for the expected circle count with a longer budget so the
- * marks must still appear — an instantaneous count is never trusted.
+ * Chart dots paint client-side after the container is measured, so poll for the
+ * circle count (past the 5s default) rather than trusting an instantaneous count.
  */
 async function expectCircles(chart: Locator, count: number): Promise<void> {
   await expect(chart).toBeVisible();
@@ -19,8 +15,7 @@ test.describe("movement all-time progress page", () => {
   test.beforeEach(async ({ authed }) => {
     const userId = authed.user.id;
 
-    // Same deterministic Alpha Bench data as workout-progress.spec.ts:
-    // W1 (3d): 135x10, 145x8 (max 145 / reps 18); W2 (2d): 150x6; W3 (1d): 140x12
+    // Same deterministic Alpha Bench data as workout-progress.spec.ts: W1 (3d), W2 (2d), W3 (1d).
     await seedCompletedWorkout(userId, {
       daysAgo: 3,
       sets: [
@@ -44,8 +39,7 @@ test.describe("movement all-time progress page", () => {
 
     await expect(page.getByRole("heading", { name: "Movements", exact: true })).toBeVisible();
 
-    // Movement names are global and duplicates can exist, so resolve the id
-    // this user's sets actually reference and click that specific list link.
+    // Global non-unique names: resolve the id this user's sets actually reference.
     const userSet = await testPrisma.set.findFirstOrThrow({
       where: { movement: { name: "Alpha Bench" }, workout: { userId: user.id } },
       include: { movement: true },
@@ -61,8 +55,6 @@ test.describe("movement all-time progress page", () => {
 
   test("switches metrics on the movement page", async ({ authed }) => {
     const { page, user } = authed;
-    // Movement names are global, so resolve Alpha Bench's id through one of this
-    // user's own sets rather than by name.
     const userSet = await testPrisma.set.findFirstOrThrow({
       where: { movement: { name: "Alpha Bench" }, workout: { userId: user.id } },
       include: { movement: true },

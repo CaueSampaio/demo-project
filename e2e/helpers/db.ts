@@ -17,10 +17,8 @@ function getTestPrismaClient(): PrismaClient {
 export const testPrisma = getTestPrismaClient();
 
 /**
- * Seeds fixed-timestamp weight entries for a user directly in the dev
- * database, so ordering/gap tests do not depend on wall-clock time.
- * Rows sharing the same `daysAgo` are offset by one hour per occurrence so
- * `recordedAt` values stay unique (stable ordering) on the same calendar day.
+ * Seeds fixed-timestamp weight rows for a user, so ordering/gap tests do not
+ * depend on wall-clock time; same-`daysAgo` rows are offset hourly to stay unique.
  */
 export async function seedWeights(userId: string, rows: { daysAgo: number; weightLbs: number }[]): Promise<void> {
   const prisma = getTestPrismaClient();
@@ -39,12 +37,8 @@ export async function seedWeights(userId: string, rows: { daysAgo: number; weigh
 }
 
 /**
- * Seeds a completed workout for a user directly in the dev database and
- * returns its id. Movements are global (no userId) with non-unique names, so
- * each unique movement is resolved find-first-or-create (`isBodyweight: false`
- * on created movements unless a `{ name, isBodyweight }` spec is given, since
- * string names are shorthand for regular movements). `completedAt` uses the
- * same `daysAgo` pattern as `seedWeights`.
+ * Seeds a completed workout and returns its id. Global non-unique movements are
+ * resolved find-first-or-create; `daysAgo` follows the `seedWeights` pattern.
  */
 export async function seedCompletedWorkout(
   userId: string,

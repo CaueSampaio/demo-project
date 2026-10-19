@@ -30,8 +30,7 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Boots the compose Postgres service if nothing is listening on the configured
- * database, then applies migrations. Makes a test run self-sufficient: no
- * manual prerequisite, and a cold machine (no running database) still passes.
+ * database, then applies migrations — so a cold machine still passes.
  */
 export default async function globalSetup(): Promise<void> {
   const { hostname, port } = new URL(DATABASE_URL);

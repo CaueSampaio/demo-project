@@ -67,8 +67,7 @@ test.describe("authed profile page", () => {
       { daysAgo: 1, weightLbs: 183 },
     ]);
     await page.goto("/profile");
-    // Both attributes sit on the SAME row element, so the brief's
-    // descendant locator becomes an attribute conjunction.
+    // Both attributes sit on the same row element.
     const stamps = await page
       .locator(`[data-testid="weight-entry"][data-recorded-at]`)
       .evaluateAll((els) => els.map((e) => e.getAttribute("data-recorded-at")));

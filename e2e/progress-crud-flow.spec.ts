@@ -4,28 +4,24 @@ import { testPrisma } from "./helpers/db";
 const day = (d: Date) =>
   new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(d);
 
-// Single end-to-end CRUD flow through the real UI:
-// create movement -> read (empty) -> start workout -> add set -> complete ->
-// history details -> movement chart -> delete -> database is clean again.
+// End-to-end CRUD flow through the real UI: create movement, read, start workout,
+// add set, complete, history details, movement chart, delete, DB clean again.
 test("progress crud flow: create, read, update, complete, details, delete", async ({ authed }) => {
   const { page, user } = authed;
 
   // Unique name so the global (non-unique) movement table never collides.
   const name = `Flow Bench ${Date.now()}`;
 
-  // 1. Create movement via the /movements form.
   await page.goto("/movements");
   await page.getByPlaceholder("Movement name (e.g. Bench Press)").fill(name);
   await page.getByRole("button", { name: "Add" }).click();
   await expect(page.getByRole("listitem").filter({ hasText: name })).toBeVisible();
 
-  // 2. Read (empty): the movement detail page has no completed workouts yet.
   await page.getByRole("link", { name }).click();
   await expect(page).toHaveURL(/\/movements\/[0-9a-f-]{36}$/);
   await expect(page.getByRole("heading", { name })).toBeVisible();
   await expect(page.getByText("No completed workouts yet.")).toBeVisible();
 
-  // 3. Create a workout and add a set through the current-workout page.
   await page.getByRole("link", { name: "Current Workout" }).click();
   await page.getByRole("button", { name: "Start Workout" }).click();
 
@@ -36,12 +32,9 @@ test("progress crud flow: create, read, update, complete, details, delete", asyn
   await addSetForm.getByRole("button", { name: "Add" }).click();
   await expect(page.getByText("10 reps × 135 lbs")).toBeVisible();
 
-  // 4. Complete the workout; the page returns to the idle state.
   await page.getByRole("button", { name: "Complete Workout" }).click();
   await expect(page.getByText("No active workout")).toBeVisible();
 
-  // 5. History details: the most recent (only) completed workout is selected
-  // by default and shows the movement's three metrics from its sets.
   await page.getByRole("link", { name: "Workout History" }).click();
   const completedToday = day(new Date());
   await expect(page.getByRole("button", { name: `Select workout ${completedToday}` })).toHaveAttribute(
@@ -62,7 +55,6 @@ test("progress crud flow: create, read, update, complete, details, delete", asyn
     }),
   ).toBeVisible();
 
-  // 6. Movement chart: one dot, and the tooltip switches metric to volume.
   await page.getByRole("link", { name: "Movements" }).click();
   await page.getByRole("link", { name }).click();
   const movementChart = page.getByRole("img", { name: `${name} — Max Weight over time` });
@@ -73,8 +65,7 @@ test("progress crud flow: create, read, update, complete, details, delete", asyn
   await page.mouse.move(dot!.x + dot!.width / 2, dot!.y + dot!.height / 2);
   await expect(movementChart.locator("..")).toHaveText(/135\b/);
 
-  // move the pointer off the chart so the focus layer/tooltip from the Max
-  // Weight hover does not leak extra circles into the next metric's render
+  // Move off the chart so the hover tooltip does not leak circles into the next render.
   await page.mouse.move(0, 0);
 
   await page.getByLabel("Metric").selectOption({ label: "Total Volume" });
@@ -82,11 +73,9 @@ test("progress crud flow: create, read, update, complete, details, delete", asyn
   await expect(volumeChart.locator("circle")).toHaveCount(1);
   const volumeDot = await volumeChart.locator("circle").first().boundingBox();
   await page.mouse.move(volumeDot!.x + volumeDot!.width / 2, volumeDot!.y + volumeDot!.height / 2);
-  // 135 * 10 = 1350; tooltip groups thousands ("1,350") but 135 (max weight)
-  // would be ambiguous, hence the optional comma + boundary
+  // 1350 groups thousands; the optional comma disambiguates it from the 135 max weight.
   await expect(volumeChart.locator("..")).toHaveText(/1,?350\b/);
 
-  // 7. Delete from history: list empties and the database is clean.
   await page.getByRole("link", { name: "Workout History" }).click();
   await page.getByRole("button", { name: /Delete workout/ }).click();
   await expect(page.getByText("No completed workouts yet.")).toBeVisible();

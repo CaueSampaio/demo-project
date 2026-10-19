@@ -83,8 +83,7 @@ test.describe("Sets", () => {
       await page.goto("/current-workout");
       const rows = page.getByRole("listitem");
       await expect(rows).toHaveCount(2);
-      // Both rows share the movement; the query now orders sets by createdAt asc,
-      // so filter by content to distinguish them.
+      // Both rows share the movement; sets now order by `createdAt` asc, so distinguish by content.
       await expect(rows.filter({ hasText: "10 reps × 135 lbs" })).toContainText(movement.name);
       await expect(rows.filter({ hasText: "8 reps × 155 lbs" })).toContainText(movement.name);
     });
