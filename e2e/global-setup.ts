@@ -36,6 +36,9 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 export default async function globalSetup(): Promise<void> {
   const { hostname, port } = new URL(DATABASE_URL);
   const dbPort = Number(port);
+  if (!Number.isInteger(dbPort) || dbPort <= 0) {
+    throw new Error(`DATABASE_URL must include an explicit port: ${DATABASE_URL.replace(/:[^:@/]*@/, ":***@")}`);
+  }
 
   if (!(await probe(hostname, dbPort))) {
     execSync("docker compose -f docker-compose.dev.yml up -d postgres", {

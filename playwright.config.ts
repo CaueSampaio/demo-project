@@ -21,7 +21,8 @@ export default defineConfig({
       NITRO_PORT: String(TEST_PORT),
       // The production server reads these at runtime; a fresh worktree has no
       // untracked `.env.local`, so supplying them here keeps the run
-      // self-sufficient. COOKIE_SECRET must match e2e/helpers/auth.ts.
+      // self-sufficient. COOKIE_SECRET is inert for the tests — no helper
+      // forges cookies — and matches the app's dev default (`.env.local.example`).
       VITE_ENVIRONMENT: "development",
       COOKIE_SECRET: "change-me-in-production",
     },

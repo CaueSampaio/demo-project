@@ -169,6 +169,9 @@ test("password with special characters round-trips", async ({ page, request }) =
 });
 
 test("6th sign-in attempt in a minute is rate limited", async ({ page, request }) => {
+  // A worst-case run (ten rounds, each with an 8-request burst plus a 10s
+  // settle guard) can outlast the default 30s test timeout.
+  test.setTimeout(90_000);
   // The signIn bucket is 5/min per IP, but the dev reset endpoint frees the
   // WHOLE per-IP budget and, under `fullyParallel`, other workers reset the
   // limiter far more often than a serial UI loop can spend 5 attempts (~400ms of
