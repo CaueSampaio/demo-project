@@ -179,9 +179,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   return (
-    // The CSS build lowercases theme hex values; the root keeps the canonical
-    // design-token spelling (`#FAF7F0`) readable to consumers and tests.
-    <html lang="en" style={{ "--color-background": "#FAF7F0" } as React.CSSProperties}>
+    <html lang="en">
       <head>
         <HeadContent />
       </head>

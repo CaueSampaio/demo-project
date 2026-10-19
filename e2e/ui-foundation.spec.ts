@@ -6,7 +6,7 @@ test("publishes the Paper & Ink tokens and Manrope", async ({ page }) => {
   const background = await page.evaluate(() =>
     getComputedStyle(document.documentElement).getPropertyValue("--color-background").trim(),
   );
-  expect(background).toBe("#FAF7F0");
+  expect(background.toLowerCase()).toBe("#faf7f0");
   expect(await page.evaluate(() => getComputedStyle(document.body).fontFamily)).toContain("Manrope");
 });
 

@@ -20,10 +20,10 @@ const variantStyles: Record<ButtonVariant, string> = {
 };
 
 const sizeStyles: Record<ButtonSize, string> = {
-  default: "h-10 px-4 py-2",
-  sm: "h-8 px-3 text-sm",
+  default: "h-11 px-4 py-2 md:h-10",
+  sm: "h-11 px-3 text-sm md:h-8",
   lg: "h-12 px-6 text-lg",
-  icon: "h-10 w-10",
+  icon: "h-11 w-11 md:h-10 md:w-10",
 };
 
 const Button = forwardRef<HTMLButtonElement, ButtonProps>(
@@ -32,7 +32,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       ref={ref}
       disabled={disabled}
       className={cn(
-        "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[10px] font-medium transition-colors",
+        "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-control font-medium transition-colors",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
         "disabled:pointer-events-none disabled:opacity-50 aria-busy:pointer-events-none aria-busy:opacity-50",
         "[&>svg]:pointer-events-none [&>svg]:shrink-0",

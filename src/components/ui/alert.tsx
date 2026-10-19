@@ -20,7 +20,7 @@ const Alert = forwardRef<HTMLDivElement, AlertProps>(({ className, variant = "de
     ref={ref}
     role="alert"
     className={cn(
-      "relative w-full rounded-[10px] border p-4 [&>svg+div]:translate-y-[-3px] [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg~*]:pl-7",
+      "relative w-full rounded-control border p-4 [&>svg+div]:translate-y-[-3px] [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg~*]:pl-7",
       variantStyles[variant],
       className,
     )}

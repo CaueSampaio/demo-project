@@ -31,7 +31,7 @@ const Field = forwardRef<HTMLDivElement, FieldProps>(
   ({ className, label, htmlFor, hint, error, children, ...props }, ref) => {
     const generatedId = useId();
     const controlId = htmlFor ?? generatedId;
-    const hintId = hint ? `${controlId}-hint` : undefined;
+    const hintId = hint && !error ? `${controlId}-hint` : undefined;
     const errorId = error ? `${controlId}-error` : undefined;
     const describedBy = [hintId, errorId].filter(Boolean).join(" ") || undefined;
 

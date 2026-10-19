@@ -168,7 +168,7 @@ const DropdownMenuContent = forwardRef<HTMLDivElement, DropdownMenuContentProps>
         role="menu"
         aria-orientation="vertical"
         className={cn(
-          "absolute z-50 min-w-[8rem] overflow-hidden rounded-[10px] border border-border bg-card p-1 text-foreground shadow-md",
+          "absolute z-50 min-w-[8rem] overflow-hidden rounded-control border border-border bg-card p-1 text-foreground shadow-md",
           "animate-in fade-in-0 zoom-in-95",
           alignStyles[align],
           className,
