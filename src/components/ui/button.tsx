@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 import { forwardRef, type ButtonHTMLAttributes } from "react";
 
-type ButtonVariant = "default" | "outline" | "ghost" | "destructive" | "secondary" | "link";
+type ButtonVariant = "default" | "secondary" | "outline" | "ghost" | "destructive" | "link" | "accent";
 type ButtonSize = "default" | "sm" | "lg" | "icon";
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -10,12 +10,13 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variantStyles: Record<ButtonVariant, string> = {
-  default: "bg-primary text-white hover:bg-primary/90 shadow-sm",
-  outline: "border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-400",
-  ghost: "text-gray-700 hover:bg-gray-100 hover:text-gray-900",
-  destructive: "bg-red-600 text-white hover:bg-red-700 shadow-sm",
-  secondary: "bg-gray-100 text-gray-900 hover:bg-gray-200",
+  default: "bg-primary text-primary-foreground shadow-xs hover:bg-primary/90",
+  secondary: "border border-border bg-secondary text-secondary-foreground hover:bg-secondary/80",
+  outline: "border border-border bg-card text-foreground hover:bg-muted",
+  ghost: "text-foreground hover:bg-muted",
+  destructive: "bg-destructive text-destructive-foreground shadow-xs hover:bg-destructive/90",
   link: "text-primary underline-offset-4 hover:underline",
+  accent: "bg-accent text-accent-foreground shadow-xs hover:bg-accent/90",
 };
 
 const sizeStyles: Record<ButtonSize, string> = {
@@ -31,9 +32,9 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       ref={ref}
       disabled={disabled}
       className={cn(
-        "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg font-medium transition-colors",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2",
-        "disabled:pointer-events-none disabled:opacity-50",
+        "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[10px] font-medium transition-colors",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+        "disabled:pointer-events-none disabled:opacity-50 aria-busy:pointer-events-none aria-busy:opacity-50",
         "[&>svg]:pointer-events-none [&>svg]:shrink-0",
         variantStyles[variant],
         sizeStyles[size],

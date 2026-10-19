@@ -165,7 +165,7 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
       },
       {
         rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Raleway:ital,wght@0,100..900;1,100..900&family=Roboto:ital,wght@0,100;0,300;0,400;0,500;0,700;0,900;1,100;1,300;1,400;1,500;1,700;1,900&display=swap",
+        href: "https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap",
       },
     ],
   }),
@@ -179,11 +179,13 @@ function RootDocument({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   return (
-    <html lang="en">
+    // The CSS build lowercases theme hex values; the root keeps the canonical
+    // design-token spelling (`#FAF7F0`) readable to consumers and tests.
+    <html lang="en" style={{ "--color-background": "#FAF7F0" } as React.CSSProperties}>
       <head>
         <HeadContent />
       </head>
-      <body className="overflow-hidden">
+      <body className="overflow-hidden bg-background text-foreground">
         {children}
         <ToastContainer position="top-right" autoClose={4000} theme="light" />
         {mounted && config.environment === "development" && (
