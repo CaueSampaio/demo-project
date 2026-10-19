@@ -17,12 +17,33 @@ test.describe("authed profile page", () => {
     await expect(page.getByText(/no weight entries/i)).toBeVisible();
   });
 
+  test("shows account and weight summary", async ({ authed }) => {
+    const { page, user } = authed;
+    await seedWeights(user.id, [
+      { daysAgo: 30, weightLbs: 185 },
+      { daysAgo: 1, weightLbs: 183 },
+    ]);
+
+    await page.goto("/profile");
+
+    await expect(page.getByRole("heading", { level: 1, name: "Profile" })).toBeVisible();
+    const account = page.getByTestId("account-card");
+    await expect(account.getByText("E2E User")).toBeVisible();
+    await expect(account.getByText(user.email)).toBeVisible();
+    await expect(account.getByRole("link", { name: "Log out" })).toBeVisible();
+
+    const summary = page.getByTestId("weight-summary");
+    await expect(summary).toContainText("183");
+    await expect(summary).toContainText("-2");
+    await expect(summary).toContainText("2");
+  });
+
   test(`adds 184 lbs and lists it`, async ({ authed }) => {
     const { page } = authed;
     await page.goto("/profile");
     await page.getByLabel("Weight").fill("184");
     await page.getByRole("button", { name: /add/i }).click();
-    await expect(page.getByText(/184 lbs/)).toBeVisible();
+    await expect(page.getByTestId("weight-entry").filter({ hasText: "184 lbs" })).toBeVisible();
   });
 
   test(`blocks decimal, zero and out-of-range input`, async ({ authed }) => {
@@ -43,12 +64,12 @@ test.describe("authed profile page", () => {
     await page.goto("/profile");
     await page.getByLabel("Weight").fill("190");
     await page.getByRole("button", { name: /add/i }).click();
-    await page.getByText(/190 lbs/).waitFor();
+    await page.getByTestId("weight-entry").filter({ hasText: "190 lbs" }).waitFor();
     await page
       .getByRole("button", { name: /delete/i })
       .first()
       .click();
-    await expect(page.getByText(/190 lbs/)).not.toBeVisible();
+    await expect(page.getByTestId("weight-entry").filter({ hasText: "190 lbs" })).not.toBeVisible();
   });
 
   test(`renders the weight-over-time chart after adding an entry`, async ({ authed }) => {
@@ -56,7 +77,7 @@ test.describe("authed profile page", () => {
     await page.goto("/profile");
     await page.getByLabel("Weight").fill("184");
     await page.getByRole("button", { name: /add/i }).click();
-    await page.getByText(/184 lbs/).waitFor();
+    await page.getByTestId("weight-entry").filter({ hasText: "184 lbs" }).waitFor();
     await expect(page.locator(`svg[aria-label="Weight over time"]`)).toBeVisible();
   });
 
@@ -81,8 +102,8 @@ test.describe("authed profile page", () => {
       { daysAgo: 0, weightLbs: 186 },
     ]);
     await page.goto("/profile");
-    await expect(page.getByText(/184 lbs/)).toBeVisible();
-    await expect(page.getByText(/186 lbs/)).toBeVisible();
+    await expect(page.getByTestId("weight-entry").filter({ hasText: "184 lbs" })).toBeVisible();
+    await expect(page.getByTestId("weight-entry").filter({ hasText: "186 lbs" })).toBeVisible();
     await expect(page.locator(`svg[aria-label="Weight over time"]`)).toBeVisible();
   });
 
@@ -94,6 +115,7 @@ test.describe("authed profile page", () => {
       { daysAgo: 2, weightLbs: 185 },
     ]);
     await page.goto("/profile");
+    await expect(page.getByTestId("weight-entry").filter({ hasText: "185 lbs" })).toBeVisible();
     await expect(page.locator(`svg[aria-label="Weight over time"]`)).toBeVisible();
   });
 });
