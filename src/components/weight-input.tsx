@@ -8,6 +8,7 @@ type WeightInputProps = {
   min?: number; // default 1
   max?: number; // default 1500
   disabled?: boolean;
+  id?: string;
   className?: string;
 };
 
@@ -27,6 +28,7 @@ export function WeightInput({
   min = 1,
   max = 1500,
   disabled,
+  id,
   className,
 }: WeightInputProps): JSX.Element {
   const ref = useRef<HTMLInputElement>(null);
@@ -56,6 +58,7 @@ export function WeightInput({
     <div className={cn("flex items-center gap-2", className)}>
       <Input
         ref={ref}
+        id={id}
         type="number"
         inputMode="numeric"
         aria-label="Weight"
