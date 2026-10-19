@@ -1,5 +1,9 @@
 import { useMemo } from "react";
 
+// Public, isomorphic config (no secrets): read by the client and during SSR
+// (root route). Deliberately NOT named `*.client.*` — that suffix is denied in
+// the server graph by TanStack Start's import-protection default file rule.
+
 export interface ClientConfig {
   environment: "development" | "test" | "staging" | "production";
 }

@@ -15,15 +15,12 @@ const config = defineConfig(({ mode }) => {
         projects: ["./tsconfig.json"],
       }),
       tailwindcss(),
-      tanstackStart({
-        // Keep the default *specifier* guards but drop the default *filename*
-        // rules: this project's `createServerFn` wrappers live in `*.server.ts`
-        // and `config.client.ts` is read during SSR, which those rules reject.
-        importProtection: {
-          client: { files: [] },
-          server: { files: [] },
-        },
-      }),
+      // Defaults only: client code cannot import `**/*.server.*` (and never the
+      // `@tanstack/*-start/server` specifiers); server code cannot import
+      // `**/*.client.*`. Server functions live in `*.functions.ts` (client-safe
+      // RPC stubs), server-only helpers in `*.server.ts` (reached only via
+      // `await import(...)` inside handler bodies). No overrides needed.
+      tanstackStart(),
       nitro({
         preset: "node-server",
         // Bun resolves package exports with the "bun" condition (e.g.
