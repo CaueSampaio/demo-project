@@ -5,13 +5,8 @@ import { resetRateLimits } from "../../lib/rate-limit.server";
 
 export const Route = createFileRoute("/api/dev-reset-rate-limits")({
   server: {
-    // Dev-only endpoint: this is a file route, not a server function, so the
-    // global CSRF middleware in `src/start.ts` (filtered to server functions)
-    // does not cover it. Install the framework's CSRF middleware here instead
-    // of the previous hand-rolled Origin-vs-Host check. The strict default
-    // applies: callers must send same-origin browser metadata
-    // (Sec-Fetch-Site/Origin/Referer) or the request is rejected with 403 —
-    // the e2e reset hook sends an explicit same-origin Origin header.
+    // File route, not a server fn, so the global CSRF middleware in `src/start.ts`
+    // (filtered to server fns) skips it — install it here. Strict default applies.
     middleware: [createCsrfMiddleware()],
     handlers: {
       POST: () => {

@@ -9,8 +9,7 @@ import { hashPassword, isPasswordHash, verifyPassword } from "./password.server"
 import { checkRateLimit, getClientIp } from "./rate-limit.server";
 import { z } from "zod";
 
-// Single source of truth: the secret is resolved and fail-fast validated when
-// config.server.ts is initialized. Never re-read process.env here.
+// Resolved and fail-fast validated at config init; never re-read process.env here.
 const COOKIE_SECRET = configService.getAppConfig().cookieSecret;
 
 /**
@@ -22,10 +21,8 @@ function signUserId(userId: string): string {
 }
 
 /**
- * Compares two strings in constant time. Both sides are hashed to a fixed
- * length first so timingSafeEqual's same-length requirement is met without
- * leaking length differences, and the digest equalizes the input so
- * comparison time does not depend on the caller-supplied values.
+ * Constant-time string compare: both sides are SHA-256-hashed first so
+ * `timingSafeEqual`'s equal-length requirement is met without leaking lengths.
  */
 function constantTimeEqual(a: string, b: string): boolean {
   const ha = crypto.createHash("sha256").update(a).digest();
@@ -41,8 +38,7 @@ function verifySessionToken(token: string): string | null {
   if (!userId || !signature) return null;
 
   const expectedSignature = crypto.createHmac("sha256", COOKIE_SECRET).update(userId).digest("hex");
-  // Constant-time comparison: early-exit string equality would let an
-  // attacker recover the HMAC byte-by-byte via response timing.
+  // Constant-time compare: early-exit equality would leak the HMAC via timing.
   if (!constantTimeEqual(signature, expectedSignature)) return null;
 
   return userId;
@@ -58,10 +54,8 @@ function setSessionCookie(userId: string) {
   setCookie(sessionCookieName, token, {
     path: "/",
     httpOnly: true,
-    // Unified environment config: VITE_ENVIRONMENT is provisioned at build
-    // and runtime (see Dockerfile); NODE_ENV is not reliable at runtime.
-    // Fail-closed: secure on every non-development environment (staging,
-    // test, production) so a mis-typed env name can't disable it.
+    // Fail-closed: secure on every non-development env (VITE_ENVIRONMENT is
+    // provisioned at build and runtime; NODE_ENV is unreliable at runtime).
     secure: configService.getAppConfig().environment !== "development",
     sameSite: "lax",
     expires: expiresAt,
@@ -111,11 +105,8 @@ export const signInServerFn = createServerFn({ method: "POST" })
     let valid = false;
     if (user && isPasswordHash(user.password)) {
       valid = await verifyPassword(password, user.password);
-      // Legacy heuristic: a PLAINTEXT password that merely starts with "$"
-      // (e.g. "$not-a-hash") is misrouted here and verifyPassword always
-      // fails, locking that user out forever and blocking migration. Fall
-      // back to a direct comparison; it can only match when the caller
-      // already knows the exact stored value, so it does not weaken auth.
+      // A plaintext password starting with `$` is misrouted here and would lock
+      // that user out; a direct compare can only match a known value, so it is safe.
       if (!valid && constantTimeEqual(password, user.password)) {
         valid = true;
       }
@@ -125,8 +116,7 @@ export const signInServerFn = createServerFn({ method: "POST" })
     }
     if (user && valid && !isPasswordHash(user.password)) {
       // Lazy migration: rehash a legacy plaintext password to argon2id on
-      // successful sign-in. Rows already stored as hashes are left untouched,
-      // so the update does not run on every successful sign-in.
+      // successful sign-in; rows already stored as hashes are left untouched.
       await prisma.user.update({
         where: { id: user.id },
         data: { password: await hashPassword(password) },
@@ -177,8 +167,7 @@ export const createAccountServerFn = createServerFn({ method: "POST" })
  */
 export const logoutServerFn = createServerFn({ method: "POST" })
   .handler(async () => {
-  // Match the attributes used when the cookie was set; browsers only accept
-  // a delete (expired cookie) whose path/domain mirror the original set.
+  // Delete must mirror the set attributes (path/domain) or browsers ignore it.
   deleteCookie(sessionCookieName, { path: "/" });
   return { success: true };
 });

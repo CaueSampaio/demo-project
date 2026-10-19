@@ -16,22 +16,9 @@ const config = defineConfig(({ mode }) => {
       }),
       tailwindcss(),
       tanstackStart({
-        // Import protection: keep the default *specifier* guards
-        // (`@tanstack/*-start/server` may not be bundled into client code,
-        // `@tanstack/*-start/client*` may not leak into server code) but drop
-        // the default filename rules (`**/*.server.*` on the client,
-        // `**/*.client.*` on the server).
-        //
-        // The filename rules assume `createServerFn` wrappers live in
-        // `*.functions.ts` and that `*.client.*` modules are never imported by
-        // SSR code. This project predates that layout: the wrappers live in
-        // `*.server.ts` (imported by client-visible routes — the server-function
-        // compiler replaces them with RPC stubs) and `RootDocument` reads
-        // `config.client.ts` during SSR (it has a `process.env` fallback). The
-        // file rules therefore both mock-break dev server-fn calls and fail the
-        // production build. Migrating to the documented `<name>.functions.ts`
-        // layout is tracked as future work; until then the filename rules are
-        // relaxed while the specifier guards stay active.
+        // Keep the default *specifier* guards but drop the default *filename*
+        // rules: this project's `createServerFn` wrappers live in `*.server.ts`
+        // and `config.client.ts` is read during SSR, which those rules reject.
         importProtection: {
           client: { files: [] },
           server: { files: [] },

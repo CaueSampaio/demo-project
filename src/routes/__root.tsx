@@ -175,12 +175,7 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
 
 function RootDocument({ children }: { children: React.ReactNode }) {
   const config = useClientConfig();
-  // The devtools are client-only and render a positioned container on the
-  // client but nothing during SSR. Rendering them only after mount keeps the
-  // server HTML and the first client render in agreement — otherwise the
-  // container occupies the slot of the SSR-injected dev client entry script
-  // (`virtual:tanstack-start-dev-client-entry`) and React aborts hydration,
-  // leaving forms without event handlers.
+  // Devtools are client-only: render them only after mount to keep SSR and first client render in agreement.
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   return (

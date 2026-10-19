@@ -1,24 +1,15 @@
-import { createServerFn } from "@tanstack/react-start";
 import { getRequestIP } from "@tanstack/react-start/server";
-import { configService } from "./config.server";
 
 export type RateLimitBucket = "signIn" | "createAccount";
 
-/**
- * Fixed-window limits per unauthenticated auth endpoint. Windows are counted
- * per client IP; once `limit` requests land inside a window, further requests
- * are rejected until the window elapses.
- */
 export const RATE_LIMITS: Record<RateLimitBucket, { limit: number; windowMs: number }> = {
   signIn: { limit: 5, windowMs: 60_000 },
   createAccount: { limit: 3, windowMs: 60_000 },
 };
 
-// Whether client-supplied X-Forwarded-For may be trusted as the rate-limit key.
-// Only enable behind an IP-overwriting proxy (e.g. `TRUST_PROXY=1` in the
-// reverse proxy's environment); with direct exposure, trusting XFF lets any
-// client spoof per-IP buckets and bypass the limit.
-// NOTE: this is read once at module init — a restart is required after changing it.
+// TRUST_PROXY=1 opts into trusting X-Forwarded-For (valid only behind an
+// IP-overwriting proxy); while directly exposed, trusting it lets any client
+// spoof per-IP buckets and bypass the limit. Read once; requires restart after changing.
 const TRUST_XFF = process.env.TRUST_PROXY === "1";
 
 const buckets = new Map<string, { count: number; windowStart: number }>();
@@ -38,11 +29,7 @@ function bucketOf(key: string): RateLimitBucket {
   return (key.split(":", 1)[0] ?? "signIn") as RateLimitBucket;
 }
 
-/**
- * In-memory fixed-window rate limiter keyed by `${bucket}:${ip}`.
- * Suitable for single-process deployments only; state does not survive
- * restarts and is not shared across instances.
- */
+// Single-process only: state is not shared across instances or restarts.
 export function checkRateLimit(
   bucket: RateLimitBucket,
   ip: string,
@@ -81,29 +68,11 @@ export function resetRateLimits() {
   buckets.clear();
 }
 
-/**
- * Resolves the client IP for rate-limit keying. Falls back to a shared
- * "unknown" bucket when the IP cannot be determined (fail-closed: those
- * clients still get limited, against the same limits).
- */
+// Fail-closed: an unresolvable IP keys a shared "unknown" bucket, so those
+// clients are still limited rather than bypassing the limiter.
 export function getClientIp(): string {
   if (TRUST_XFF) {
     return getRequestIP({ xForwardedFor: true }) ?? "unknown";
   }
-  // Socket IP only — client-supplied XFF headers are not trusted when the app
-  // is exposed directly (no IP-overwriting proxy in front).
   return getRequestIP() ?? "unknown";
 }
-
-/**
- * Dev/e2e-only hook that clears all rate-limit buckets. Throws when invoked
- * in a production environment so the limiter can never be disarmed there.
- */
-export const resetRateLimitsServerFn = createServerFn({ method: "POST" })
-  .handler(() => {
-  if (configService.getAppConfig().environment === "production") {
-    throw new Error("Rate-limit reset is not available in production");
-  }
-  resetRateLimits();
-  return { ok: true as const };
-});
