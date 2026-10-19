@@ -1,17 +1,9 @@
-import { test, expect } from "@playwright/test";
-import { createTestUser, sessionCookieFor, seedCompletedWorkout, testPrisma } from "./helpers/auth";
-import { waitForHydration } from "./helpers/hydration";
-
-let userId: string;
-
-test.beforeEach(async () => {
-  const user = await createTestUser();
-  userId = user.id;
-});
+import { expect, test } from "./fixtures";
+import { seedCompletedWorkout, testPrisma } from "./helpers/db";
 
 test.describe("movement all-time progress page", () => {
-  test.beforeEach(async ({ page }) => {
-    await page.context().addCookies(sessionCookieFor(userId));
+  test.beforeEach(async ({ authed }) => {
+    const userId = authed.user.id;
 
     // Same deterministic Alpha Bench data as workout-progress.spec.ts:
     // W1 (3d): 135x10, 145x8 (max 145 / reps 18); W2 (2d): 150x6; W3 (1d): 140x12
@@ -32,16 +24,16 @@ test.describe("movement all-time progress page", () => {
     });
   });
 
-  test("navigates from the movements list to an all-time chart via URL param", async ({ page }) => {
+  test("navigates from the movements list to an all-time chart via URL param", async ({ authed }) => {
+    const { page, user } = authed;
     await page.goto("/movements");
-    await waitForHydration(page);
 
     await expect(page.getByRole("heading", { name: "Movements", exact: true })).toBeVisible();
 
     // Movement names are global and duplicates can exist, so resolve the id
     // this user's sets actually reference and click that specific list link.
     const userSet = await testPrisma.set.findFirstOrThrow({
-      where: { movement: { name: "Alpha Bench" }, workout: { userId } },
+      where: { movement: { name: "Alpha Bench" }, workout: { userId: user.id } },
       include: { movement: true },
     });
     await page.locator(`a[href$="/movements/${userSet.movementId}"]`).click();
@@ -53,15 +45,15 @@ test.describe("movement all-time progress page", () => {
     await expect(chart.locator("circle")).toHaveCount(3);
   });
 
-  test("switches metrics on the movement page", async ({ page }) => {
+  test("switches metrics on the movement page", async ({ authed }) => {
+    const { page, user } = authed;
     // Movement names are global, so resolve Alpha Bench's id through one of this
     // user's own sets rather than by name.
     const userSet = await testPrisma.set.findFirstOrThrow({
-      where: { movement: { name: "Alpha Bench" }, workout: { userId } },
+      where: { movement: { name: "Alpha Bench" }, workout: { userId: user.id } },
       include: { movement: true },
     });
     await page.goto(`/movements/${userSet.movementId}`);
-    await waitForHydration(page);
 
     await page.getByLabel("Metric").selectOption({ label: "Total Reps" });
 
@@ -75,8 +67,9 @@ test.describe("movement all-time progress page", () => {
     await expect(chart.locator("..")).toHaveText(/18\b/);
   });
 
-  test("renders a bodyweight movement", async ({ page }) => {
-    const workoutId = await seedCompletedWorkout(userId, {
+  test("renders a bodyweight movement", async ({ authed }) => {
+    const { page, user } = authed;
+    const workoutId = await seedCompletedWorkout(user.id, {
       daysAgo: 1,
       sets: [{ movementName: { name: "Body Dip", isBodyweight: true }, weight: 0, reps: 15 }],
     });
@@ -86,20 +79,19 @@ test.describe("movement all-time progress page", () => {
     });
 
     await page.goto(`/movements/${dipSet.movementId}`);
-    await waitForHydration(page);
 
     await expect(page.getByRole("heading", { name: "Body Dip" })).toBeVisible();
     const chart = page.getByRole("img", { name: "Body Dip — Max Weight over time" });
     await expect(chart.locator("circle")).toHaveCount(1);
   });
 
-  test("shows the empty state for an unused movement", async ({ page }) => {
+  test("shows the empty state for an unused movement", async ({ authed }) => {
+    const { page } = authed;
     const movement = await testPrisma.movement.create({
       data: { name: "Unused Fly", isBodyweight: false },
     });
 
     await page.goto(`/movements/${movement.id}`);
-    await waitForHydration(page);
 
     await expect(page.getByText("No completed workouts yet.")).toBeVisible();
     // No chart is rendered; the layout's logo/devtools imgs still exist.

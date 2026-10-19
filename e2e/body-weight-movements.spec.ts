@@ -1,19 +1,12 @@
-import { test, expect } from "@playwright/test";
-import { createTestUser, sessionCookieFor, seedWeights, testPrisma } from "./helpers/auth";
+import { expect, test } from "./fixtures";
+import { seedWeights, testPrisma } from "./helpers/db";
 
 /** Movements are global (no userId) — unique names avoid cross-test/run collisions. */
 const unique = (base: string) => `${base} ${Date.now()}-${Math.floor(Math.random() * 10_000)}`;
 
 test.describe("body-weight movements", () => {
-  let userId: string;
-
-  test.beforeEach(async ({ page }) => {
-    const user = await createTestUser();
-    userId = user.id;
-    await page.context().addCookies(sessionCookieFor(user.id));
-  });
-
-  test("flags a movement as body-weight at creation and keeps inputs editable", async ({ page }) => {
+  test("flags a movement as body-weight at creation and keeps inputs editable", async ({ authed }) => {
+    const { page } = authed;
     await page.goto("/movements");
     const checkbox = page.getByLabel("Body-weight");
     await checkbox.check();
@@ -42,7 +35,8 @@ test.describe("body-weight movements", () => {
     }).toPass();
   });
 
-  test("keeps the name input editable and form submittable after checking the box", async ({ page }) => {
+  test("keeps the name input editable and form submittable after checking the box", async ({ authed }) => {
+    const { page } = authed;
     await page.goto("/movements");
     const checkbox = page.getByLabel("Body-weight");
     const name = page.getByPlaceholder("Movement name");
@@ -53,9 +47,10 @@ test.describe("body-weight movements", () => {
     await expect(page.getByRole("button", { name: /add/i })).toBeEnabled();
   });
 
-  test("defaults set weight to the latest recorded body weight and keeps it editable", async ({ page }) => {
-    await seedWeights(userId, [{ daysAgo: 400, weightLbs: 180 }, { daysAgo: 0, weightLbs: 184 }]);
-    await testPrisma.workout.create({ data: { userId } });
+  test("defaults set weight to the latest recorded body weight and keeps it editable", async ({ authed }) => {
+    const { page, user } = authed;
+    await seedWeights(user.id, [{ daysAgo: 400, weightLbs: 180 }, { daysAgo: 0, weightLbs: 184 }]);
+    await testPrisma.workout.create({ data: { userId: user.id } });
 
     // create the body-weight movement through the UI (exercises the Task 2 flag)
     const pullUpName = unique("Pull Up");
@@ -75,15 +70,16 @@ test.describe("body-weight movements", () => {
     await page.getByRole("button", { name: /add/i }).click();
     await expect(async () => {
       const set = await testPrisma.set.findFirst({
-        where: { movement: { name: pullUpName }, workout: { userId } },
+        where: { movement: { name: pullUpName }, workout: { userId: user.id } },
       });
       expect(set?.weight).toBe(200); // edited value persisted, not the default
     }).toPass({ timeout: 5_000 });
   });
 
-  test("does not fetch body weight for a regular movement", async ({ page }) => {
-    await seedWeights(userId, [{ daysAgo: 0, weightLbs: 184 }]);
-    await testPrisma.workout.create({ data: { userId } });
+  test("does not fetch body weight for a regular movement", async ({ authed }) => {
+    const { page, user } = authed;
+    await seedWeights(user.id, [{ daysAgo: 0, weightLbs: 184 }]);
+    await testPrisma.workout.create({ data: { userId: user.id } });
     const benchName = unique("Bench Press");
     await testPrisma.movement.create({ data: { name: benchName, isBodyweight: false } });
     const bench = await testPrisma.movement.findFirstOrThrow({ where: { name: benchName } });
@@ -96,14 +92,15 @@ test.describe("body-weight movements", () => {
     await page.getByRole("button", { name: /add/i }).click();
     await expect(async () => {
       const set = await testPrisma.set.findFirst({
-        where: { movement: { id: bench.id }, workout: { userId } },
+        where: { movement: { id: bench.id }, workout: { userId: user.id } },
       });
       expect(set?.weight).toBe(135); // completing a real round-trip proves the page settled
     }).toPass({ timeout: 5_000 });
   });
 
-  test("leaves weight empty for a body-weight movement when no weight was ever recorded", async ({ page }) => {
-    await testPrisma.workout.create({ data: { userId } });
+  test("leaves weight empty for a body-weight movement when no weight was ever recorded", async ({ authed }) => {
+    const { page, user } = authed;
+    await testPrisma.workout.create({ data: { userId: user.id } });
     const dipName = unique("Dip");
     await testPrisma.movement.create({ data: { name: dipName, isBodyweight: true } });
 
@@ -115,7 +112,7 @@ test.describe("body-weight movements", () => {
     await page.getByRole("button", { name: /add/i }).click();
     await expect(async () => {
       const set = await testPrisma.set.findFirst({
-        where: { movement: { name: dipName }, workout: { userId } },
+        where: { movement: { name: dipName }, workout: { userId: user.id } },
       });
       expect(set?.weight).toBe(95);
     }).toPass({ timeout: 5_000 });

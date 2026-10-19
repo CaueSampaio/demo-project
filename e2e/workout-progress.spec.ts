@@ -1,21 +1,13 @@
-import { test, expect } from "@playwright/test";
-import { createTestUser, sessionCookieFor, seedCompletedWorkout, testPrisma } from "./helpers/auth";
-import { waitForHydration } from "./helpers/hydration";
+import { expect, test } from "./fixtures";
+import { seedCompletedWorkout, testPrisma } from "./helpers/db";
 
 const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000);
 const day = (d: Date) =>
   new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(d);
 
-let userId: string;
-
-test.beforeEach(async () => {
-  const user = await createTestUser();
-  userId = user.id;
-});
-
 test.describe("workout-history details", () => {
-  test.beforeEach(async ({ page }) => {
-    await page.context().addCookies(sessionCookieFor(userId));
+  test.beforeEach(async ({ authed }) => {
+    const userId = authed.user.id;
 
     // Deterministic history: Alpha Bench and Zulu Squat (alphabetical => Alpha first).
     // W1 (3d): Alpha 135x10, 145x8 (max 145 / reps 18 / volume 2510); Zulu 225x5
@@ -42,9 +34,9 @@ test.describe("workout-history details", () => {
     });
   });
 
-  test("selects the most recent workout by default and shows its movements", async ({ page }) => {
+  test("selects the most recent workout by default and shows its movements", async ({ authed }) => {
+    const { page } = authed;
     await page.goto("/workout-history");
-    await waitForHydration(page);
 
     // The most recent workout (W3) is the only one pressed.
     const mostRecent = page.getByRole("button", { name: `Select workout ${day(daysAgo(1))}` });
@@ -81,9 +73,9 @@ test.describe("workout-history details", () => {
     await expect(page.getByText(/Area = volume \(weight × reps\)/)).toBeVisible();
   });
 
-  test("shows every movement of the selected workout with its three metrics", async ({ page }) => {
+  test("shows every movement of the selected workout with its three metrics", async ({ authed }) => {
+    const { page } = authed;
     await page.goto("/workout-history");
-    await waitForHydration(page);
 
     await page.getByRole("button", { name: `Select workout ${day(daysAgo(3))}` }).click();
 
@@ -105,9 +97,9 @@ test.describe("workout-history details", () => {
     await expect(page.getByText(/1st: 225 lbs × 5/)).toBeVisible();
   });
 
-  test("switching workout updates the details", async ({ page }) => {
+  test("switching workout updates the details", async ({ authed }) => {
+    const { page } = authed;
     await page.goto("/workout-history");
-    await waitForHydration(page);
 
     // Start from the default (W3), then switch to W2.
     await page.getByRole("button", { name: `Select workout ${day(daysAgo(2))}` }).click();
@@ -141,17 +133,17 @@ test.describe("workout-history details", () => {
     ).toHaveCount(0);
   });
 
-  test("ignores sets from active workouts", async ({ page }) => {
+  test("ignores sets from active workouts", async ({ authed }) => {
+    const { page, user } = authed;
     // An active (not yet completed) workout with an Alpha Bench set must not
     // leak into the workout picker or the details.
-    const active = await testPrisma.workout.create({ data: { userId } });
+    const active = await testPrisma.workout.create({ data: { userId: user.id } });
     const bench = await testPrisma.movement.findFirstOrThrow({ where: { name: "Alpha Bench" } });
     await testPrisma.set.create({
       data: { workoutId: active.id, movementId: bench.id, reps: 5, weight: 999 },
     });
 
     await page.goto("/workout-history");
-    await waitForHydration(page);
 
     // Picker lists only the 3 completed workout dates.
     await expect(page.getByRole("button", { name: /Select workout/ })).toHaveCount(3);
@@ -160,9 +152,9 @@ test.describe("workout-history details", () => {
     await expect(page.getByText(/999\s+lbs/)).toHaveCount(0);
   });
 
-  test("deletes a workout from the list and updates the details", async ({ page }) => {
+  test("deletes a workout from the list and updates the details", async ({ authed }) => {
+    const { page, user } = authed;
     await page.goto("/workout-history");
-    await waitForHydration(page);
 
     // Select W2 first (not the default), then delete it.
     await page.getByRole("button", { name: `Select workout ${day(daysAgo(2))}` }).click();
@@ -181,10 +173,10 @@ test.describe("workout-history details", () => {
       "true",
     );
 
-    expect(await testPrisma.workout.count({ where: { userId } })).toBe(2);
+    expect(await testPrisma.workout.count({ where: { userId: user.id } })).toBe(2);
     expect(
       await testPrisma.set.count({
-        where: { movement: { name: "Alpha Bench" }, workout: { userId } },
+        where: { movement: { name: "Alpha Bench" }, workout: { userId: user.id } },
       }),
     ).toBe(3); // 4 Alpha sets across W1-W3; W2's 150x6 set is gone with its workout
   });

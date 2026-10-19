@@ -1,6 +1,5 @@
-import { test, expect } from "@playwright/test";
-import { createTestUser, sessionCookieFor, testPrisma } from "./helpers/auth";
-import { waitForHydration } from "./helpers/hydration";
+import { expect, test } from "./fixtures";
+import { testPrisma } from "./helpers/db";
 
 const day = (d: Date) =>
   new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(d);
@@ -8,16 +7,14 @@ const day = (d: Date) =>
 // Single end-to-end CRUD flow through the real UI:
 // create movement -> read (empty) -> start workout -> add set -> complete ->
 // history details -> movement chart -> delete -> database is clean again.
-test("progress crud flow: create, read, update, complete, details, delete", async ({ page }) => {
-  const user = await createTestUser();
-  await page.context().addCookies(sessionCookieFor(user.id));
+test("progress crud flow: create, read, update, complete, details, delete", async ({ authed }) => {
+  const { page, user } = authed;
 
   // Unique name so the global (non-unique) movement table never collides.
   const name = `Flow Bench ${Date.now()}`;
 
   // 1. Create movement via the /movements form.
   await page.goto("/movements");
-  await waitForHydration(page);
   await page.getByPlaceholder("Movement name (e.g. Bench Press)").fill(name);
   await page.getByRole("button", { name: "Add" }).click();
   await expect(page.getByRole("listitem").filter({ hasText: name })).toBeVisible();
@@ -30,7 +27,6 @@ test("progress crud flow: create, read, update, complete, details, delete", asyn
 
   // 3. Create a workout and add a set through the current-workout page.
   await page.getByRole("link", { name: "Current Workout" }).click();
-  await waitForHydration(page);
   await page.getByRole("button", { name: "Start Workout" }).click();
 
   const addSetForm = page.locator("form").filter({ hasText: "Select movement" });
@@ -47,7 +43,6 @@ test("progress crud flow: create, read, update, complete, details, delete", asyn
   // 5. History details: the most recent (only) completed workout is selected
   // by default and shows the movement's three metrics from its sets.
   await page.getByRole("link", { name: "Workout History" }).click();
-  await waitForHydration(page);
   const completedToday = day(new Date());
   await expect(page.getByRole("button", { name: `Select workout ${completedToday}` })).toHaveAttribute(
     "aria-pressed",
@@ -70,7 +65,6 @@ test("progress crud flow: create, read, update, complete, details, delete", asyn
   // 6. Movement chart: one dot, and the tooltip switches metric to volume.
   await page.getByRole("link", { name: "Movements" }).click();
   await page.getByRole("link", { name }).click();
-  await waitForHydration(page);
   const movementChart = page.getByRole("img", { name: `${name} — Max Weight over time` });
   await expect(movementChart.locator("circle")).toHaveCount(1);
 
@@ -94,7 +88,6 @@ test("progress crud flow: create, read, update, complete, details, delete", asyn
 
   // 7. Delete from history: list empties and the database is clean.
   await page.getByRole("link", { name: "Workout History" }).click();
-  await waitForHydration(page);
   await page.getByRole("button", { name: /Delete workout/ }).click();
   await expect(page.getByText("No completed workouts yet.")).toBeVisible();
 
