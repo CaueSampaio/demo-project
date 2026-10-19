@@ -88,3 +88,11 @@
     background-repeat: no-repeat;
   }
 }
+
+/* The TanStack devtools launcher is a body-level overlay; on phones it covers
+   the bottom tab bar and full-screen dialog controls, so keep it desktop-only. */
+@media (max-width: 1023px) {
+  [aria-label="Open TanStack Devtools"] {
+    display: none !important;
+  }
+}

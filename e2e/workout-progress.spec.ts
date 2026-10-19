@@ -63,7 +63,7 @@ test.describe("workout-history details", () => {
     seededDates = [await completedAtOf(w1), await completedAtOf(w2), await completedAtOf(w3)];
   });
 
-  test("overview shows the selected workout and volume chart", async ({ authed }) => {
+  test("overview breaks the selected workout volume down by movement", async ({ authed }) => {
     const { page } = authed;
     const date = seededDates[1]!;
     await page.goto("/workout-history");
@@ -71,13 +71,22 @@ test.describe("workout-history details", () => {
 
     const dialog = page.getByRole("dialog");
     await expect(dialog.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
-    const overviewChart = dialog.getByRole("img", { name: `Volume by movement for ${day(date)}` });
-    await expect(overviewChart).toBeVisible();
-    // The stacked areas themselves must paint, not just the axes.
-    await expect(overviewChart.locator("path")).not.toHaveCount(0);
-    // The selected date is marked inside the chart (dashed accent rule), not only by the caption.
-    await expect(overviewChart.locator('line[stroke="var(--color-accent)"]')).toHaveCount(1);
-    await expect(dialog.getByText("Selected workout")).toBeVisible();
+    const breakdown = dialog.getByRole("region", { name: `Volume by movement for ${day(date)}` });
+    await expect(breakdown).toBeVisible();
+
+    // Sorted by volume descending: Zulu Squat 1,200 > Alpha Bench 900.
+    const rows = breakdown.getByRole("listitem");
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(0)).toContainText("Zulu Squat");
+    await expect(rows.nth(0)).toContainText("1,200 lbs");
+    await expect(rows.nth(1)).toContainText("Alpha Bench");
+    await expect(rows.nth(1)).toContainText("900 lbs");
+
+    const bars = breakdown.getByRole("progressbar");
+    await expect(bars).toHaveCount(2);
+    await expect(bars.nth(0)).toHaveAttribute("aria-valuenow", "1200");
+    await expect(bars.nth(1)).toHaveAttribute("aria-valuenow", "900");
+
     await expect(dialog.getByRole("tab", { name: "Alpha Bench" })).toBeVisible();
     await expect(dialog.getByRole("tab", { name: "Zulu Squat" })).toBeVisible();
   });
@@ -175,42 +184,4 @@ test.describe("workout-history details", () => {
       }),
     ).toBe(3); // W1 (135x10, 145x8) + W3 (140x12); W2's two 150x6 sets went with it
   });
-});
-
-test("keeps top five movements plus Other", async ({ authed }) => {
-  const { page, user } = authed;
-  await seedCompletedWorkout(user.id, {
-    daysAgo: 5,
-    sets: [{ movementName: "Series 0", weight: 10, reps: 10 }],
-  });
-  const recentId = await seedCompletedWorkout(user.id, {
-    daysAgo: 1,
-    sets: Array.from({ length: 7 }, (_, i) => ({
-      movementName: `Series ${i}`,
-      weight: (7 - i) * 10,
-      reps: 10,
-    })),
-  });
-  const date = await completedAtOf(recentId);
-  await page.goto("/workout-history");
-  await openWorkout(page, date);
-
-  const dialog = page.getByRole("dialog");
-  await expect(dialog.getByText("Other")).toBeVisible();
-  await expect(dialog.getByRole("tab")).toHaveCount(8); // Overview + 7 movements
-});
-
-test("explains when there is not enough history for a trend", async ({ authed }) => {
-  const { page, user } = authed;
-  const workoutId = await seedCompletedWorkout(user.id, {
-    daysAgo: 1,
-    sets: [{ movementName: "Only Bench", weight: 135, reps: 10 }],
-  });
-  const date = await completedAtOf(workoutId);
-
-  await page.goto("/workout-history");
-  await openWorkout(page, date);
-
-  const dialog = page.getByRole("dialog");
-  await expect(dialog.getByText("Not enough history for a trend yet.")).toBeVisible();
 });

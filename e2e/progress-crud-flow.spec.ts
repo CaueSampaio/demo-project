@@ -66,7 +66,9 @@ test("progress crud flow: create, read, update, complete, details, delete", asyn
 
   const completedDate = completedAt!;
   await expect(dialog.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
-  await expect(dialog.getByRole("img", { name: `Volume by movement for ${day(completedDate)}` })).toBeVisible();
+  const breakdown = dialog.getByRole("region", { name: `Volume by movement for ${day(completedDate)}` });
+  await expect(breakdown).toBeVisible();
+  await expect(breakdown.getByRole("listitem").filter({ hasText: name })).toContainText("1,350 lbs");
 
   await dialog.getByRole("tab", { name }).click();
   await expect(

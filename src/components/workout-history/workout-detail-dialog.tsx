@@ -16,12 +16,10 @@ import { StatCard } from "@/components/stat-card";
 import { formatNumber, formatWorkoutDateLong, formatWorkoutTime } from "@/lib/format";
 import { summarizeMovements, summarizeWorkout, type WorkoutLike } from "@/lib/workout-analytics";
 import { MovementSetChart } from "./movement-set-chart";
-import { VolumeOverviewChart } from "./volume-overview-chart";
+import { VolumeBreakdown } from "./volume-breakdown";
 
 type WorkoutDetailDialogProps = {
   workout: WorkoutLike | null;
-  /** Full history, so the Overview chart can build the window ending at the selected workout. */
-  workouts: WorkoutLike[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
 };
@@ -39,11 +37,11 @@ const ordinalLabel = (position: number) => {
 
 /**
  * URL-driven detail for a completed workout: a sticky header + tab strip over a
- * scrollable body. The Overview tab charts volume across the recent window; each
- * movement tab pairs summary stats with a weight × reps bubble chart and the
+ * scrollable body. The Overview tab breaks the session volume down by movement;
+ * each movement tab pairs summary stats with a weight × reps chart and the
  * performed set list.
  */
-export function WorkoutDetailDialog({ workout, workouts, open, onOpenChange }: WorkoutDetailDialogProps) {
+export function WorkoutDetailDialog({ workout, open, onOpenChange }: WorkoutDetailDialogProps) {
   // Radix restores focus to a `Dialog.Trigger` it owns; here the trigger lives
   // in the card, so remember whatever was focused when we opened and restore it
   // on close (Escape, Back, or the close button).
@@ -118,7 +116,7 @@ export function WorkoutDetailDialog({ workout, workouts, open, onOpenChange }: W
                 {movements.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No movements in this workout.</p>
                 ) : (
-                  <VolumeOverviewChart workouts={workouts} selectedWorkoutId={workout.id} />
+                  <VolumeBreakdown movements={movements} selectedDate={completedAt} />
                 )}
               </div>
             </TabsContent>
