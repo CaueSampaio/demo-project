@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { X } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -14,9 +15,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StatCard } from "@/components/stat-card";
 import { formatNumber, formatWorkoutDateLong, formatWorkoutTime } from "@/lib/format";
 import { summarizeMovements, summarizeWorkout, type WorkoutLike } from "@/lib/workout-analytics";
+import { MovementSetChart } from "./movement-set-chart";
+import { VolumeOverviewChart } from "./volume-overview-chart";
 
 type WorkoutDetailDialogProps = {
   workout: WorkoutLike | null;
+  /** Full history, so the Overview chart can build the window ending at the selected workout. */
+  workouts: WorkoutLike[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
 };
@@ -33,11 +38,12 @@ const ordinalLabel = (position: number) => {
 };
 
 /**
- * URL-driven detail shell for a completed workout: an Overview tab plus one
- * alphabetical tab per movement. Task 10 replaces the summary/set lists with
- * charts; this task owns the shell, tabs, summary and set list.
+ * URL-driven detail for a completed workout: a sticky header + tab strip over a
+ * scrollable body. The Overview tab charts volume across the recent window; each
+ * movement tab pairs summary stats with a weight × reps bubble chart and the
+ * performed set list.
  */
-export function WorkoutDetailDialog({ workout, open, onOpenChange }: WorkoutDetailDialogProps) {
+export function WorkoutDetailDialog({ workout, workouts, open, onOpenChange }: WorkoutDetailDialogProps) {
   // Radix restores focus to a `Dialog.Trigger` it owns; here the trigger lives
   // in the card, so remember whatever was focused when we opened and restore it
   // on close (Escape, Back, or the close button).
@@ -87,7 +93,8 @@ export function WorkoutDetailDialog({ workout, open, onOpenChange }: WorkoutDeta
 
         <DialogBody>
           <Tabs defaultValue="overview">
-            <TabsList>
+            {/* Sticky so the tab strip stays reachable while the body scrolls. */}
+            <TabsList className="sticky top-0 z-10 bg-card">
               <TabsTrigger value="overview">Overview</TabsTrigger>
               {movements.map((movement) => (
                 <TabsTrigger key={movement.movementId} value={movement.movementId}>
@@ -97,47 +104,61 @@ export function WorkoutDetailDialog({ workout, open, onOpenChange }: WorkoutDeta
             </TabsList>
 
             <TabsContent value="overview">
-              {movements.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No movements in this workout.</p>
-              ) : (
-                <div className="space-y-6">
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                    <StatCard label="Sets" value={formatNumber(summary.setCount)} />
-                    <StatCard label="Movements" value={formatNumber(summary.movementCount)} />
-                    <StatCard
-                      label="Volume"
-                      value={formatNumber(summary.totalVolume)}
-                      unit="lbs"
-                      className="col-span-2 sm:col-span-1"
-                    />
-                  </div>
-
-                  <ul className="space-y-1">
-                    {workout.sets.map((set, index) => (
-                      <li key={set.id} className="text-sm text-muted-foreground">
-                        <span className="font-medium text-foreground">{set.movement.name}</span>{" "}
-                        {ordinalLabel(index + 1)}: {formatNumber(set.weight)} lbs × {formatNumber(set.reps)}
-                      </li>
-                    ))}
-                  </ul>
+              <div className="space-y-6">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  <StatCard label="Volume" value={formatNumber(summary.totalVolume)} unit="lbs" />
+                  <StatCard label="Sets" value={formatNumber(summary.setCount)} />
+                  <StatCard
+                    label="Movements"
+                    value={formatNumber(summary.movementCount)}
+                    className="col-span-2 sm:col-span-1"
+                  />
                 </div>
-              )}
+
+                {movements.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No movements in this workout.</p>
+                ) : (
+                  <VolumeOverviewChart workouts={workouts} selectedWorkoutId={workout.id} />
+                )}
+              </div>
             </TabsContent>
 
             {movements.map((movement) => (
               <TabsContent key={movement.movementId} value={movement.movementId}>
-                <div className="space-y-3">
-                  <p className="text-sm text-muted-foreground">
-                    {movement.setCount} sets · {formatNumber(movement.totalReps)} reps ·{" "}
-                    {formatNumber(movement.totalVolume)} volume
-                  </p>
-                  <ul className="space-y-1">
+                <div className="space-y-6">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-base font-bold text-foreground">{movement.movementName}</h3>
+                    {movement.isBodyweight ? <Badge variant="brand">Bodyweight</Badge> : null}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    <StatCard label="Max Weight" value={formatNumber(movement.maxWeight)} unit="lbs" />
+                    <StatCard label="Total Reps" value={formatNumber(movement.totalReps)} />
+                    <StatCard label="Total Volume" value={formatNumber(movement.totalVolume)} unit="lbs" />
+                    <StatCard label="Sets" value={formatNumber(movement.setCount)} />
+                  </div>
+
+                  <MovementSetChart
+                    movementName={movement.movementName}
+                    sets={movement.sets}
+                    selectedDate={completedAt}
+                  />
+
+                  <ol className="space-y-2">
                     {movement.sets.map((set, index) => (
-                      <li key={set.id} className="text-sm text-muted-foreground">
-                        {ordinalLabel(index + 1)}: {formatNumber(set.weight)} lbs × {formatNumber(set.reps)}
+                      <li
+                        key={set.id}
+                        className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-sm">
+                        <span className="font-medium text-foreground">
+                          {ordinalLabel(index + 1)}: {formatNumber(set.weight)} lbs × {formatNumber(set.reps)} reps
+                        </span>
+                        <span className="text-muted-foreground">
+                          {formatNumber(set.weight * set.reps)} volume
+                          {set.createdAt ? ` · ${formatWorkoutTime(set.createdAt)}` : ""}
+                        </span>
                       </li>
                     ))}
-                  </ul>
+                  </ol>
                 </div>
               </TabsContent>
             ))}

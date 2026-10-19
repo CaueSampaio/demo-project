@@ -89,7 +89,12 @@ function WorkoutHistoryPage() {
         </>
       )}
 
-      <WorkoutDetailDialog workout={openWorkout} open={openWorkout !== null} onOpenChange={handleOpenChange} />
+      <WorkoutDetailDialog
+        workout={openWorkout}
+        workouts={workouts}
+        open={openWorkout !== null}
+        onOpenChange={handleOpenChange}
+      />
     </div>
   );
 }

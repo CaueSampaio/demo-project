@@ -1,13 +1,26 @@
 import { expect, test } from "./fixtures";
-import { testPrisma } from "./helpers/db";
+import { seedCompletedWorkout, testPrisma } from "./helpers/db";
 
 const day = (d: Date) =>
-  new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(d);
+  new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(d);
+const time = (d: Date) => new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" }).format(d);
 
 // End-to-end CRUD flow through the real UI: create movement, read, start workout,
 // add set, complete, history details, movement chart, delete, DB clean again.
 test("progress crud flow: create, read, update, complete, details, delete", async ({ authed }) => {
   const { page, user } = authed;
+
+  // A prior workout for a different movement gives the Overview volume chart a
+  // second date to trend; a fresh account alone would show the placeholder.
+  await seedCompletedWorkout(user.id, {
+    daysAgo: 1,
+    sets: [{ movementName: `Flow Warmup ${Date.now()}`, weight: 45, reps: 10 }],
+  });
 
   // Unique name so the global (non-unique) movement table never collides.
   const name = `Flow Bench ${Date.now()}`;
@@ -35,25 +48,31 @@ test("progress crud flow: create, read, update, complete, details, delete", asyn
   await page.getByRole("button", { name: "Complete Workout" }).click();
   await expect(page.getByText("No active workout")).toBeVisible();
 
+  // History card opens the detail dialog: Overview volume chart, then the
+  // movement tab's weight × reps bubble chart and performed set text.
   await page.getByRole("link", { name: "Workout History" }).click();
   const completedToday = day(new Date());
-  await expect(page.getByRole("button", { name: `Select workout ${completedToday}` })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
-  await expect(page.getByRole("paragraph").filter({ hasText: name })).toBeVisible();
-  // Single movement, single set: one per-run line plus the aggregates.
-  await expect(page.getByText(/135\s+lbs/).first()).toBeVisible();
-  await expect(page.getByText(/1st: 135 lbs × 10/)).toBeVisible();
-  await expect(page.getByText(/10\s+reps/)).toBeVisible();
-  await expect(page.getByText(/1,350/)).toBeVisible();
+  const completedTime = time(new Date());
+  const checkDetails = page.getByRole("button", {
+    name: `Check details for workout ${completedToday} at ${completedTime}`,
+  });
+  await expect(checkDetails).toBeVisible();
+  await checkDetails.click();
 
-  // One bubble chart per movement (the flow workout has only one).
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
+  await expect(dialog.getByRole("img", { name: `Volume by movement for ${completedToday}` })).toBeVisible();
+
+  await dialog.getByRole("tab", { name }).click();
   await expect(
-    page.getByRole("img", {
-      name: `${name} — weight vs reps (area = volume) on ${completedToday}`,
-    }),
+    dialog.getByRole("img", { name: `${name} — weight vs reps (area = volume) on ${completedToday}` }),
   ).toBeVisible();
+  await expect(dialog.getByText(/1st: 135 lbs × 10 reps/)).toBeVisible();
+  await expect(dialog.getByText(/1,350/).first()).toBeVisible();
+  await expect(dialog.getByText(/10\s+reps/).first()).toBeVisible();
+
+  await page.getByRole("button", { name: "Close dialog" }).click();
+  await expect(dialog).toBeHidden();
 
   await page.getByRole("link", { name: "Movements" }).click();
   await page.getByRole("link", { name }).click();
@@ -76,8 +95,13 @@ test("progress crud flow: create, read, update, complete, details, delete", asyn
   // 1350 groups thousands; the optional comma disambiguates it from the 135 max weight.
   await expect(volumeChart.locator("..")).toHaveText(/1,?350\b/);
 
+  // Back on the history page, both cards are deleted through their card actions.
   await page.getByRole("link", { name: "Workout History" }).click();
-  await page.getByRole("button", { name: /Delete workout/ }).click();
+  const deleteButton = page.getByRole("button", { name: /Delete workout/ });
+  await expect(deleteButton).toHaveCount(2);
+  await deleteButton.first().click();
+  await expect(deleteButton).toHaveCount(1);
+  await deleteButton.first().click();
   await expect(page.getByText("No completed workouts yet.")).toBeVisible();
 
   expect(await testPrisma.workout.count({ where: { userId: user.id } })).toBe(0);
