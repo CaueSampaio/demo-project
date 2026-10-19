@@ -1,5 +1,19 @@
+import { type Locator } from "@playwright/test";
 import { expect, test } from "./fixtures";
 import { seedCompletedWorkout, testPrisma } from "./helpers/db";
+
+/**
+ * The chart's dot marks are painted on the client only after the container is
+ * measured (requestAnimationFrame + ResizeObserver), so the server-rendered SVG
+ * starts empty. On cold/parallel full runs that first paint can outlast
+ * Playwright's default 5s assertion timeout, which read as "chart renders 0
+ * circles". Poll for the expected circle count with a longer budget so the
+ * marks must still appear — an instantaneous count is never trusted.
+ */
+async function expectCircles(chart: Locator, count: number): Promise<void> {
+  await expect(chart).toBeVisible();
+  await expect.poll(() => chart.locator("circle").count(), { timeout: 15_000 }).toBe(count);
+}
 
 test.describe("movement all-time progress page", () => {
   test.beforeEach(async ({ authed }) => {
@@ -42,7 +56,7 @@ test.describe("movement all-time progress page", () => {
     await expect(page.getByRole("heading", { name: "Alpha Bench" })).toBeVisible();
 
     const chart = page.getByRole("img", { name: "Alpha Bench — Max Weight over time" });
-    await expect(chart.locator("circle")).toHaveCount(3);
+    await expectCircles(chart, 3);
   });
 
   test("switches metrics on the movement page", async ({ authed }) => {
@@ -58,7 +72,7 @@ test.describe("movement all-time progress page", () => {
     await page.getByLabel("Metric").selectOption({ label: "Total Reps" });
 
     const chart = page.getByRole("img", { name: "Alpha Bench — Total Reps over time" });
-    await expect(chart.locator("circle")).toHaveCount(3);
+    await expectCircles(chart, 3);
 
     // focus-layer duplicate intercepts locator hovers; move the mouse instead
     const first = await chart.locator("circle").first().boundingBox();
@@ -82,7 +96,7 @@ test.describe("movement all-time progress page", () => {
 
     await expect(page.getByRole("heading", { name: "Body Dip" })).toBeVisible();
     const chart = page.getByRole("img", { name: "Body Dip — Max Weight over time" });
-    await expect(chart.locator("circle")).toHaveCount(1);
+    await expectCircles(chart, 1);
   });
 
   test("shows the empty state for an unused movement", async ({ authed }) => {
