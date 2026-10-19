@@ -49,7 +49,10 @@ test.describe("body-weight movements", () => {
 
   test("defaults set weight to the latest recorded body weight and keeps it editable", async ({ authed }) => {
     const { page, user } = authed;
-    await seedWeights(user.id, [{ daysAgo: 400, weightLbs: 180 }, { daysAgo: 0, weightLbs: 184 }]);
+    await seedWeights(user.id, [
+      { daysAgo: 400, weightLbs: 180 },
+      { daysAgo: 0, weightLbs: 184 },
+    ]);
     await testPrisma.workout.create({ data: { userId: user.id } });
 
     // create the body-weight movement through the UI (exercises the Task 2 flag)

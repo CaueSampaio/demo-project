@@ -44,7 +44,10 @@ test.describe("authed profile page", () => {
     await page.getByLabel("Weight").fill("190");
     await page.getByRole("button", { name: /add/i }).click();
     await page.getByText(/190 lbs/).waitFor();
-    await page.getByRole("button", { name: /delete/i }).first().click();
+    await page
+      .getByRole("button", { name: /delete/i })
+      .first()
+      .click();
     await expect(page.getByText(/190 lbs/)).not.toBeVisible();
   });
 
@@ -59,7 +62,10 @@ test.describe("authed profile page", () => {
 
   test(`lists entries ascending after adds`, async ({ authed }) => {
     const { page, user } = authed;
-    await seedWeights(user.id, [{ daysAgo: 7, weightLbs: 185 }, { daysAgo: 1, weightLbs: 183 }]);
+    await seedWeights(user.id, [
+      { daysAgo: 7, weightLbs: 185 },
+      { daysAgo: 1, weightLbs: 183 },
+    ]);
     await page.goto("/profile");
     // Both attributes sit on the SAME row element, so the brief's
     // descendant locator becomes an attribute conjunction.
@@ -71,7 +77,10 @@ test.describe("authed profile page", () => {
 
   test(`same-day weigh-ins both listed and charted`, async ({ authed }) => {
     const { page, user } = authed;
-    await seedWeights(user.id, [{ daysAgo: 0, weightLbs: 184 }, { daysAgo: 0, weightLbs: 186 }]);
+    await seedWeights(user.id, [
+      { daysAgo: 0, weightLbs: 184 },
+      { daysAgo: 0, weightLbs: 186 },
+    ]);
     await page.goto("/profile");
     await expect(page.getByText(/184 lbs/)).toBeVisible();
     await expect(page.getByText(/186 lbs/)).toBeVisible();
@@ -80,7 +89,11 @@ test.describe("authed profile page", () => {
 
   test(`months-apart data still renders a legible chart`, async ({ authed }) => {
     const { page, user } = authed;
-    await seedWeights(user.id, [{ daysAgo: 400, weightLbs: 200 }, { daysAgo: 30, weightLbs: 190 }, { daysAgo: 2, weightLbs: 185 }]);
+    await seedWeights(user.id, [
+      { daysAgo: 400, weightLbs: 200 },
+      { daysAgo: 30, weightLbs: 190 },
+      { daysAgo: 2, weightLbs: 185 },
+    ]);
     await page.goto("/profile");
     await expect(page.locator(`svg[aria-label="Weight over time"]`)).toBeVisible();
   });

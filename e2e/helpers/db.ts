@@ -1,8 +1,7 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../../prisma/generated/client/client";
 
-const DATABASE_URL =
-  process.env.E2E_DATABASE_URL ?? "postgresql://postgres:postgres@localhost:5432/demo_project";
+const DATABASE_URL = process.env.E2E_DATABASE_URL ?? "postgresql://postgres:postgres@localhost:5432/demo_project";
 
 let _prismaClient: PrismaClient | null = null;
 
@@ -23,10 +22,7 @@ export const testPrisma = getTestPrismaClient();
  * Rows sharing the same `daysAgo` are offset by one hour per occurrence so
  * `recordedAt` values stay unique (stable ordering) on the same calendar day.
  */
-export async function seedWeights(
-  userId: string,
-  rows: { daysAgo: number; weightLbs: number }[],
-): Promise<void> {
+export async function seedWeights(userId: string, rows: { daysAgo: number; weightLbs: number }[]): Promise<void> {
   const prisma = getTestPrismaClient();
   const seenDays = new Map<number, number>();
   await prisma.bodyWeightRecord.createMany({
@@ -36,9 +32,7 @@ export async function seedWeights(
       return {
         userId,
         weightLbs,
-        recordedAt: new Date(
-          Date.now() - daysAgo * 86_400_000 - sameDayIndex * 3_600_000,
-        ),
+        recordedAt: new Date(Date.now() - daysAgo * 86_400_000 - sameDayIndex * 3_600_000),
       };
     }),
   });
@@ -69,9 +63,7 @@ export async function seedCompletedWorkout(
   const specs = new Map<string, { name: string; isBodyweight: boolean }>();
   for (const set of workout.sets) {
     const spec =
-      typeof set.movementName === "string"
-        ? { name: set.movementName, isBodyweight: false }
-        : set.movementName;
+      typeof set.movementName === "string" ? { name: set.movementName, isBodyweight: false } : set.movementName;
     specs.set(spec.name, spec);
   }
   for (const spec of specs.values()) {
@@ -91,9 +83,7 @@ export async function seedCompletedWorkout(
   await prisma.set.createMany({
     data: workout.sets.map((set) => ({
       workoutId: created.id,
-      movementId: movementIds.get(
-        typeof set.movementName === "string" ? set.movementName : set.movementName.name,
-      )!,
+      movementId: movementIds.get(typeof set.movementName === "string" ? set.movementName : set.movementName.name)!,
       reps: set.reps,
       weight: set.weight,
     })),

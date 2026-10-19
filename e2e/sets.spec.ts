@@ -17,9 +17,7 @@ test.describe("Sets", () => {
       await page.getByPlaceholder("Reps").fill("10");
       await page.getByRole("button", { name: "Add" }).click();
 
-      await expect(
-        page.getByRole("listitem").filter({ hasText: movement.name }),
-      ).toContainText("10 reps × 135 lbs");
+      await expect(page.getByRole("listitem").filter({ hasText: movement.name })).toContainText("10 reps × 135 lbs");
 
       // The server-fn round-trip is not awaited by the click, so poll until durable.
       await expect(async () => {
@@ -62,9 +60,7 @@ test.describe("Sets", () => {
       await page.getByPlaceholder("Reps").fill("10");
       await page.getByRole("button", { name: "Add" }).click();
 
-      await expect(
-        page.getByRole("listitem").filter({ hasText: movement.name }),
-      ).toContainText("10 reps × 135 lbs");
+      await expect(page.getByRole("listitem").filter({ hasText: movement.name })).toContainText("10 reps × 135 lbs");
     });
   });
 
