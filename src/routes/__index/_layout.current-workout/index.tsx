@@ -10,7 +10,7 @@ import {
   completeWorkoutServerFn,
   addSetServerFn,
   deleteSetServerFn,
-} from "@/lib/workouts.server";
+} from "@/lib/workouts.functions";
 import { Play, Check, Plus, X } from "lucide-react";
 import { useSuspenseQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { currentWorkoutQueryOptions, latestBodyWeightQueryOptions, movementsQueryOptions } from "./-queries/current-workout";

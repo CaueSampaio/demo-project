@@ -1,6 +1,6 @@
-import { getCurrentWorkoutServerFn } from "@/lib/workouts.server";
-import { getMovementsServerFn } from "@/lib/movements.server";
-import { getLatestBodyWeightServerFn } from "@/lib/weight.server";
+import { getCurrentWorkoutServerFn } from "@/lib/workouts.functions";
+import { getMovementsServerFn } from "@/lib/movements.functions";
+import { getLatestBodyWeightServerFn } from "@/lib/weight.functions";
 import { queryOptions } from "@tanstack/react-query";
 
 export const currentWorkoutQueryOptions = () =>
