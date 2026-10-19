@@ -156,3 +156,65 @@ exit=0
 pre-existing `test.skip()` placeholders in `workouts.spec.ts` / `sets.spec.ts`; `auth`,
 `weight-tracking`, `body-weight-movements`, `movements` specs all pass — all 9 auth e2e
 tests green, including the mandatory encrypt/verify cases.)
+
+## Resolution addendum: dev-mode hydration 500s / `hydrated: false` (root cause found & fixed)
+
+**Root cause.** Commit `1d27e09` introduced `src/start.ts` as a custom global
+`createStart` entry. TanStack Start treats `src/start.ts` as the SHARED
+client+SSR entry — the client bundle's `hydrateStart.js` imports it directly.
+That entry statically imported `csrfMiddleware` from `src/lib/csrf.server.ts`,
+whose module top level imported `getRequest`/`getRequestHost` from
+`@tanstack/react-start/server` — a server-only barrel
+(`react-start-server` → `start-server-core` → `@tanstack/react-router/ssr` →
+`react-dom/server.browser.js`). Vite's client transform therefore loaded the
+entire SSR render runtime in the browser; there `react-dom/server.browser.js`
+is CJS and the ESM import dies with `does not provide an export named
+'default'`, which fails the whole hydration chunk import chain on EVERY page
+load → `hydrated: false` and the family of client-only test failures across
+weight-tracking, body-weight-movements, auth and profile.
+
+This explains every previously-puzzling axis:
+
+- **Full-vs-standalone / workers / ordering:** the error exists on every page
+  load regardless of concurrency or spec order — it was never a parallelism
+  race.
+- **Source-axis "exoneration":** every source revert kept `src/start.ts` (or
+  its client-loaded import chain) intact, so the failure survived them all.
+- **Container-rebuild signal:** the failing state appeared right at the image
+  rebuild coinciding with `1d27e09` — exactly when `src/start.ts` was
+  introduced. T10-green (`e5b1233`) registered CSRF per-function via
+  `.middleware([csrf])`, so nothing client-loaded imported `csrf.server.ts`
+  then.
+- **Module path signatures:** the client graph requested RAW `node_modules`
+  paths with `?v=` fingerprints (`react-dom/server.browser.js`,
+  `request-response.js`, `ssr/renderRouterToStream.js`) — those are the
+  server render runtime being pulled into the client graph; `@tanstack/
+  react-router-devtools`/`react-query-devtools` were exonerated (they are
+  client-safe barrels in the transformed graph).
+
+**Fix.** `src/lib/csrf.server.ts` now dynamically imports
+`@tanstack/react-start/server` INSIDE the `.server()` handler, so it is never
+resolved or fetched on the client (the `createMiddleware(...).server(cb)`
+stub is client-safe). The `originMismatch(request, requestHost)` helper is
+pure — host passed in; the dev-reset route performs the same Origin-vs-Host
+check inline.
+
+**Verification.** `bun run typecheck` — 0 errors. Full `bunx playwright test`
+after a cold stack recycle (down → up → watch rebuild): **24 passed / 23
+skipped**, twice consecutively (one earlier post-rebuild run showed two
+transient body-weight flakes during Vite cold-start dep optimization; both
+pass on rerun and in later full runs). Browser graph check: zero
+`ssr/*`, `start-server-core`, `react-start-server` or
+`react-dom/server.browser.js` requests in the client resource list, and zero
+console errors on `/sign-in`.
+
+**Left-over risks.**
+- The dev-only shim for `tanstack-start-injected-head-scripts:v` in
+  `vite.config.ts` stays: it guards a separate, rarer stale-transform race
+  (virtual-module id resolved in the client env during dep re-optimization)
+  unrelated to this root cause; removing it here requires a rebuild +
+  revalidation.
+  Invariant for future code: client-visible modules must never statically
+  import `@tanstack/react-start/server` or any `*.server` barrel — reference
+  server-only helpers only inside `.server()` handlers (matches upstream
+  TanStack guidance, issues #6189/#5709).
