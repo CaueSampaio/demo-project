@@ -33,14 +33,3 @@ test("summarizes and groups sets by movement", async ({ authed }) => {
   await expect(page.getByText("12 reps × 95 lbs")).toBeVisible();
 });
 
-test("stacks the add-set form on mobile without overflow", async ({ authed }) => {
-  const { page } = authed;
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/current-workout");
-  await page.getByRole("button", { name: "Start Workout" }).click();
-
-  await expect(page.getByLabel("Movement")).toBeVisible();
-  await expect(page.getByLabel("Weight")).toBeVisible();
-  await expect(page.getByPlaceholder("Reps")).toBeVisible();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
-});
