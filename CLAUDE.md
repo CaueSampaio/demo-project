@@ -42,14 +42,16 @@ The Docker setup uses volume mounts for hot reloading and ensures TypeScript typ
 - `src/start.ts` - Custom TanStack Start entry; registers TanStack Start's native CSRF request middleware (`createCsrfMiddleware`) for server functions (auto-resolved by the Start vite plugin)
 - `src/components/ui/` - Reusable React components
 - `src/integrations/tanstack-query/` - TanStack Query setup and providers
-- `src/lib/` - Server-side domain logic and shared utilities:
-  - `auth.server.ts` + `auth.consts.ts` - Credential-based authentication (argon2id password hashing, HMAC-signed session cookie) - server functions + auth middleware
+- `src/lib/` - Server functions (`*.functions.ts`, client-safe RPC wrappers) and server-only helpers (`*.server.ts`):
+  - `auth.functions.ts` + `auth.consts.ts` - Credential-based auth server functions (`getUser`/`signIn`/`createAccount`/`logout`) and `authMiddleware`
+  - `auth.server.ts` - Server-only auth helpers (HMAC session signing/verification, session cookie set/read/clear)
   - `password.server.ts` - Argon2id password hashing/verification helpers (`Bun.password`)
-  - `rate-limit.server.ts` - In-memory fixed-window rate limiting for auth endpoints
-  - `config.server.ts` / `config.client.ts` - Runtime configuration for server and client
+  - `rate-limit.server.ts` - In-memory per-IP rate limiting for auth endpoints
+  - `config.server.ts` - Server-only runtime config (secrets); `config.ts` - isomorphic public config (read by client and SSR)
   - `db.server.ts` - Prisma client with the PostgreSQL driver adapter (`@prisma/adapter-pg`)
-  - `movements.server.ts` - Movement server functions (list, create)
-  - `workouts.server.ts` - Workout server functions (create, complete, sets, history, delete)
+  - `movements.functions.ts` - Movement server functions (list, create)
+  - `weight.functions.ts` - Body-weight server functions (list, latest, add, delete)
+  - `workouts.functions.ts` - Workout server functions (create, complete, sets, history, delete)
   - `types.ts` / `utils.ts` - Shared types and utilities
 - `e2e/` - Playwright end-to-end tests
 - `public/` - Static assets
@@ -127,13 +129,16 @@ This project uses a multi-layered approach to state management:
 
 ## Server Functions
 
-Server-side logic lives in `src/lib/*.server.ts` as TanStack Start server functions (`createServerFn`):
+Server functions are declared with `createServerFn` and live in client-safe `src/lib/*.functions.ts` modules (client importers receive RPC stubs). A `*.functions.ts` file may statically import only `@tanstack/react-start`, `@tanstack/react-router`, `zod` and types; everything server-only (`db.server`, `password.server`, `rate-limit.server`, auth helpers) is reached with `await import("...")` **inside** the handler body. Server-only helpers live in `src/lib/*.server.ts` and are never statically imported by client-visible code — so no client-loadable module ever pulls in a `.server.ts` module or the `@tanstack/react-start/server` barrel (the hydration invariant is now structural, not just convention).
 
-- **Auth** (`src/lib/auth.server.ts`): `getUserServerFn`, `signInServerFn`, `createAccountServerFn`, `logoutServerFn`, plus `authMiddleware` for protecting functions. Passwords are hashed with argon2id (`src/lib/password.server.ts`). CSRF protection uses TanStack Start's native `createCsrfMiddleware` (framework `@tanstack/react-start@1.168.61`), registered **once** on `requestMiddleware` in `src/start.ts` (the custom TanStack Start entry: `createStart(() => ({ requestMiddleware: [createCsrfMiddleware({ filter: (ctx) => ctx.handlerType === "serverFn" })] }))`), so it applies to every server function — no per-fn middleware attachments. The strict default is kept: requests without `Sec-Fetch-Site`/`Origin`/`Referer` are rejected (403). The dev-only `/api/dev-reset-rate-limits` route is not a server function, so it installs the same middleware itself.
-- **Workouts** (`src/lib/workouts.server.ts`): `createWorkoutServerFn`, `getCurrentWorkoutServerFn`, `completeWorkoutServerFn`, `addSetServerFn`, `deleteSetServerFn`, `getWorkoutHistoryServerFn`, `deleteWorkoutsServerFn`
-- **Movements** (`src/lib/movements.server.ts`): `getMovementsServerFn`, `createMovementServerFn`
+- **Auth** (`src/lib/auth.functions.ts`): `getUserServerFn`, `signInServerFn`, `createAccountServerFn`, `logoutServerFn`, plus `authMiddleware` for protecting functions. Server-only helpers (HMAC signing/verification, session cookie set/read/clear) live in `src/lib/auth.server.ts`. Passwords are hashed with argon2id (`src/lib/password.server.ts`). CSRF protection uses TanStack Start's native `createCsrfMiddleware` (framework `@tanstack/react-start@1.168.61`), registered **once** on `requestMiddleware` in `src/start.ts` (the custom TanStack Start entry: `createStart(() => ({ requestMiddleware: [createCsrfMiddleware({ filter: (ctx) => ctx.handlerType === "serverFn" })] }))`), so it applies to every server function — no per-fn middleware attachments. The strict default is kept: requests without `Sec-Fetch-Site`/`Origin`/`Referer` are rejected (403). The dev-only `/api/dev-reset-rate-limits` route is not a server function, so it installs the same middleware itself.
+- **Workouts** (`src/lib/workouts.functions.ts`): `createWorkoutServerFn`, `getCurrentWorkoutServerFn`, `completeWorkoutServerFn`, `addSetServerFn`, `deleteSetServerFn`, `getWorkoutHistoryServerFn`, `deleteWorkoutsServerFn`
+- **Movements** (`src/lib/movements.functions.ts`): `getMovementsServerFn`, `createMovementServerFn`
+- **Weight** (`src/lib/weight.functions.ts`): `getWeightsServerFn`, `getLatestBodyWeightServerFn`, `addBodyWeightServerFn`, `deleteWeightServerFn`
 
-Server functions access the database through `getServerSidePrismaClient()` from `src/lib/db.server.ts`, which reads `DATABASE_URL` from the server config.
+Server functions access the database through `getServerSidePrismaClient()` from `src/lib/db.server.ts`, awaited inside the handler.
+
+**Import protection.** `vite.config.ts` leaves TanStack Start's import-protection defaults untouched: client code cannot import `**/*.server.*` (or the `@tanstack/*-start/server` specifiers), and server code cannot import `**/*.client.*`. The `*.functions.ts` / `*.server.ts` split above is what lets the defaults hold unaided — a leak fails the production build rather than shipping a broken client graph.
 
 ## Docker Notes
 

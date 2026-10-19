@@ -256,8 +256,8 @@ packages pulled in by `router-plugin`); no direct non-TanStack dependency drifte
    *specifier* guards (`@tanstack/*-start/server` out of client code, `@tanstack/*-start/client*`
    out of server code) are always merged with the defaults and stay active. The framework's
    documented layout (`.functions.ts` for `createServerFn` wrappers, `.server.ts` for helpers;
-   client-only modules never imported by SSR) is the proper long-term fix and is tracked as
-   future work.
+   client-only modules never imported by SSR) is the proper long-term fix — **now adopted; see
+   the file-contract addendum at the end of this document.**
 2. **Devtools hydration mismatch.** `<TanStackDevtools>` renders a positioned container on the
    client but nothing during SSR; with the new manifest the container occupied the slot of the
    SSR-injected `virtual:tanstack-start-dev-client-entry` script and React aborted hydration,
@@ -314,3 +314,73 @@ intended fix at multi-instance scale, and is the drop-in path for the deferred m
 **Reset hook.** `resetRateLimits()` rebuilds both `RateLimiterMemory` instances. RLF has no bulk
 "clear all" (and `resetKey` clears a single key), so swapping the instances is the way to clear
 every IP for the e2e `beforeEach` hook.
+
+## Addendum: framework file contract adopted (import-protection defaults restored)
+
+**Change.** Adopted TanStack Start's file contract instead of the temporary `importProtection`
+relaxation from the upgrade addendum above.
+
+- **`src/lib/*.functions.ts`** — every `createServerFn` (auth, workouts, weight, movements) now
+  lives here. These modules are client-loadable (the build compiles them to RPC stubs for client
+  importers), so they statically import only `@tanstack/react-start`, `@tanstack/react-router`,
+  `zod` and types. Prisma, password helpers, rate limiting and session helpers are reached with
+  `await import("...")` **inside** the handler body, so the client graph never resolves them.
+- **`src/lib/*.server.ts`** — server-only helpers only. `auth.server.ts` keeps session
+  signing/verification (`signUserId`, `verifySessionToken`, `constantTimeEqual`) and cookie
+  set/read/clear (`setSessionCookie`, `getSessionUserId`, `clearSessionCookie`);
+  `password.server.ts`, `rate-limit.server.ts`, `db.server.ts` and `config.server.ts` are
+  unchanged. The workout/weight/movement `.server.ts` files held only wrappers and were deleted
+  (their functions moved to `.functions.ts`).
+- **`authMiddleware`** moved to `auth.functions.ts`. The other functions files reference it in
+  their `.middleware([...])` chains, which are client-loadable, so it must not sit behind a
+  `*.server.*` filename. It is the same `createMiddleware(...).server(...)` identity as before;
+  its body is stripped from client builds like any `.server()` callback.
+- **`config.client.ts` → `config.ts`.** The module is isomorphic — the root route reads
+  `useClientConfig` during SSR — so the `*.client.*` filename was a false positive for the
+  server rule. Renaming it lets the server default run unmodified, with no per-file exclude.
+
+**Protection restored.** `vite.config.ts` no longer sets `importProtection`; the framework
+defaults now apply (verified against
+`node_modules/@tanstack/start-plugin-core/dist/esm/import-protection/defaults.js`):
+
+```js
+client: { specifiers: ["@tanstack/react-start/server", "@tanstack/solid-start/server",
+                       "@tanstack/vue-start/server"],
+          files: ["**/*.server.*"], excludeFiles: ["**/node_modules/**"] }
+server: { specifiers: [], files: ["**/*.client.*"], excludeFiles: ["**/node_modules/**"] }
+```
+
+The `@tanstack/*-start/server` specifier guard is always merged with the defaults and remains
+active. A leak now fails `bun run build` (behavior `error`) instead of shipping a mocked client
+graph; in dev the file rules are the same, with `mock` behavior surfacing the same mistake.
+
+**Hydration invariant is now structural.** The earlier rule — "client-visible modules must never
+statically import `@tanstack/react-start/server` or a `*.server.*` barrel" — is enforced by the
+build: the client environment cannot resolve a `*.server.*` file at all. The only path to those
+helpers is `await import(...)` inside a handler body, and handler bodies are stripped from client
+output (the `b5204d1` failure mode can no longer be reintroduced accidentally).
+
+**Verification (Docker dev stack rebuilt on restored defaults):**
+
+```
+$ bun run typecheck                                      # 0 errors
+$ bun run build                                          # exit 0 (import-protection = error)
+$ bunx playwright test                                   # 24 passed / 23 skipped, exit 0 (twice)
+
+POST /_serverFn/...                 Origin: https://evil.example        -> 403
+POST /_serverFn/...                 Origin: http://localhost:3000        -> 200
+POST /_serverFn/...                 no Sec-Fetch-Site/Origin/Referer     -> 403
+POST /api/dev-reset-rate-limits     Origin: https://evil.example        -> 403
+POST /api/dev-reset-rate-limits     Origin: http://localhost:3000        -> 200
+POST /api/dev-reset-rate-limits     no metadata                        -> 403
+
+GET / -> 307 /current-workout -> 307 /sign-in (200)
+browser: zero console/page errors on `/` and `/sign-in`; a controlled input
+updates React state (hydration OK); captured RPC id resolves to
+`src/lib/auth.functions.ts?tss-serverfn-split`.
+```
+
+One cold-start run showed three known body-weight hydration flakes (5 s
+`waitForHydration` poll, pre-hydration checkbox); two consecutive warm runs were
+clean. No `does not provide an export named 'default'`, virtual-module or
+import-protection errors in the app logs.
