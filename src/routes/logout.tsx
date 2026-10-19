@@ -12,6 +12,7 @@ function LogoutPage() {
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     logoutServerFn().finally(() => {
+      // Best-effort navigation: redirect even if logout fails, so a sign-out error never strands the user here.
       router.navigate({ to: "/sign-in" });
     });
   };

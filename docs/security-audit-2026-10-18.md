@@ -49,14 +49,7 @@ was already green once the client was generated.
 | Lazy-migration `prisma.user.update` ran on **every** successful sign-in (rehashing already-argon2id rows on login) | Guarded with `!isPasswordHash(user.password)` — only legacy plaintext rows migrate (flagged 3× across T3/T10 reviews) |
 | `resetRateLimitsServerFn` lacked `csrfMiddleware` (dev-only endpoint, but a POST server fn) | Covered by the global CSRF registration in `src/start.ts` (its explicit `.middleware([csrfMiddleware])` attachment was removed in the global-CSRF refactor) |
 
-**Residual note — e2e flakiness observed during the final verification:** one full-suite run
-at default parallelism (8 workers) failed 5 tests when the shared per-IP rate-limit buckets
-were drained by concurrent auth tests before their `beforeEach` reset landed ("Too many
-attempts" mid-run). The immediately following identical invocation passed clean. The limiter
-keys on client IP and all tests share an IP; this is inherent to the documented in-memory
-per-process design (see Deferred / future work — Redis-backed limiting). It predates this
-task and is unrelated to the changes above, but a CI (single-worker) runner is the current
-mitigation.
+**Residual note (superseded):** the earlier `9 failed / 23 skipped` dev-run attribution to rate-limit bucket races is withdrawn — see the Resolution addendum below, which is authoritative: those failures were the `src/start.ts` server-import root cause, since fixed (suite 24-passed twice).
 
 ### Global CSRF registration (custom Start entry)
 
