@@ -29,7 +29,7 @@ All 18 findings from the recon inventory, resolved in this pass unless noted.
 | 14 | `public/config.js`: runtime-config mechanism is dead (envsubst never runs; dead Auth0/documentParser keys) | File, its `<script>` include in `__root.tsx`, and the `window.APP_CONFIG` path deleted; client falls through to build-time `VITE_ENVIRONMENT` | `0ea7549` (T4) |
 | 15 | `CLAUDE.md` says "Auth0-based authentication"; `@auth0/auth0-react` unused | Doc corrected (credential-based auth, argon2id, HMAC session cookie); dependency removed and lockfile synced; stale `get-server-config.server.ts` references removed; dev-under-Bun documented (**this task**) | this pass |
 | 16 | `e2e/helpers/auth.ts` inserts plaintext test users | `createTestUser` inserts a pinned argon2id hash (of `"e2test-password"`); custom passwords are rejected | `86bd202` (T3) |
-| 17 | No rate limiting / CSRF / security headers anywhere | Origin-check `csrfMiddleware` registered **once** as global function middleware via a custom Start entry (`src/start.ts` → `createStart(() => ({ functionMiddleware: [csrfMiddleware] }))`), so it covers every server function instead of 12 per-fn `.middleware([csrfMiddleware])` attachments; per-IP in-memory fixed-window limiter (sign-in 5/min, create-account 3/min; XFF trusted for keying **only** when `TRUST_PROXY=1`; expired buckets evicted with a 10k-entry soft cap) — headers remain future work | `3c92758` (T6), `4b0a6d9` (T7), this pass (global registration) |
+| 17 | No rate limiting / CSRF / security headers anywhere | CSRF uses TanStack Start's **native** `createCsrfMiddleware` (framework `@tanstack/react-start@1.168.61`; native since 1.168.0), registered **once** on `requestMiddleware` in `src/start.ts` with `filter: (ctx) => ctx.handlerType === "serverFn"`, so it covers every server function; the hand-rolled `src/lib/csrf.server.ts` is deleted; the dev-only `/api/dev-reset-rate-limits` route (not a server fn) installs the same middleware itself. Per-IP in-memory fixed-window limiter (sign-in 5/min, create-account 3/min; XFF trusted for keying **only** when `TRUST_PROXY=1`; expired buckets evicted with a 10k-entry soft cap) — headers remain future work | `3c92758` (T6), `4b0a6d9` (T7), this pass (native CSRF) |
 | 18 | `docker-compose.dev.yml` hardcodes dev creds `postgres/postgres` | Documented as acceptable for the dev-only DB (see Deployment notes); no change | n/a (accepted) |
 
 **Count:** 18 findings → 17 fixed in this pass, 1 accepted-and-documented (#18). No finding left unfixed without an explicit partner decision.
@@ -47,42 +47,41 @@ was already green once the client was generated.
 | Finding (deferred from earlier tasks) | Resolution |
 |---|---|
 | Lazy-migration `prisma.user.update` ran on **every** successful sign-in (rehashing already-argon2id rows on login) | Guarded with `!isPasswordHash(user.password)` — only legacy plaintext rows migrate (flagged 3× across T3/T10 reviews) |
-| `resetRateLimitsServerFn` lacked `csrfMiddleware` (dev-only endpoint, but a POST server fn) | Covered by the global CSRF registration in `src/start.ts` (its explicit `.middleware([csrfMiddleware])` attachment was removed in the global-CSRF refactor) |
+| `resetRateLimitsServerFn` lacked `csrfMiddleware` (dev-only endpoint, but a POST server fn) | Now a file route (`/api/dev-reset-rate-limits`, not a server fn); it installs TanStack Start's native CSRF middleware directly (the global middleware's `serverFn` filter skips routes) |
 
 **Residual note (superseded):** the earlier `9 failed / 23 skipped` dev-run attribution to rate-limit bucket races is withdrawn — see the Resolution addendum below, which is authoritative: those failures were the `src/start.ts` server-import root cause, since fixed (suite 24-passed twice).
 
-### Global CSRF registration (custom Start entry)
+### CSRF: native framework middleware
 
-`csrfMiddleware` is no longer attached per server function. It is registered once in
-`src/start.ts`:
+CSRF is handled by TanStack Start's built-in `createCsrfMiddleware`, not by app code. The
+hand-rolled `src/lib/csrf.server.ts` (Origin-vs-Host check + `originMismatch` helper) was
+deleted. Because this app ships a custom Start entry (`src/start.ts`), Start does **not**
+auto-install the middleware; it is registered explicitly on `requestMiddleware`:
 
 ```ts
-import { createStart } from "@tanstack/react-start";
-import { csrfMiddleware } from "./lib/csrf.server";
+import { createCsrfMiddleware, createStart } from "@tanstack/react-start";
 
 export const startInstance = createStart(() => ({
-  functionMiddleware: [csrfMiddleware],
+  requestMiddleware: [
+    createCsrfMiddleware({ filter: (ctx) => ctx.handlerType === "serverFn" }),
+  ],
 }));
 ```
 
-TanStack Start auto-resolves `src/start.ts` at plugin-config time and aliases it as
-`#tanstack-start-entry`; `startInstance.getOptions().functionMiddleware` is then prepended to
-every server function's own middleware (`executeMiddleware` in `@tanstack/start-client-core`).
-All 12 `.middleware([csrfMiddleware])` / `.middleware([csrfMiddleware, authMiddleware])`
-attachments across `auth`, `workouts`, `weight`, `movements`, and `rate-limit` server modules
-were removed as part of this change. `authMiddleware` attachments are untouched, and the
-`/api/dev-reset-rate-limits` raw route keeps its own `originMismatch()` check.
+- `requestMiddleware` runs before every request (server routes, SSR and server functions); the
+  `filter` narrows validation to server functions (the same-origin RPC surface).
+- Validation trusts `Sec-Fetch-Site` first, then `Origin`, then `Referer`. The strict default is
+  kept: a request carrying none of those headers is rejected (403). We do **not** set
+  `allowRequestsWithoutOriginCheck`.
+- The dev-only `/api/dev-reset-rate-limits` route is a *file route*, not a server function, so
+  the global filter skips it; it installs `createCsrfMiddleware()` itself (and the e2e reset
+  hook now sends an explicit same-origin `Origin` header).
 
-**Motivation / experiment result:** the per-fn middleware-attachment pattern is a plausible
-trigger for the upstream TanStack Start dev hydration bug class (#6189 server-functions +
-middleware in dev, #5709, #6480), so global registration was tried both as the ergonomic ask
-from the partner and as a possible fix. **Result: the failure profile is unchanged** — two
-back-to-back full Playwright runs each produced `9 failed / 23 skipped / 8 did not run / 7
-passed`, identical to the pre-change baseline, still failing on
-`react-dom/server.browser.js` "does not provide an export named 'default'" during hydration.
-The refactor is kept for its single-registration ergonomics and correctness (the CSRF e2e test
-`cross-origin POST is rejected` passes, and a forged-Origin POST to a sign-in server fn is
-rejected 403), but it does **not** resolve the hydration bug.
+**Historical note (superseded design).** An earlier revision registered a hand-rolled
+`csrfMiddleware` as global *function* middleware via `createStart(() => ({ functionMiddleware:
+[csrfMiddleware] }))`. That approach was replaced by the native request middleware above; the
+`functionMiddleware` field is no longer used. The earlier per-fn `.middleware([csrfMiddleware])`
+attachments had already been removed in the global-registration refactor.
 
 ## Deferred / future work
 
@@ -202,12 +201,93 @@ pass on rerun and in later full runs). Browser graph check: zero
 console errors on `/sign-in`.
 
 **Left-over risks.**
-- The dev-only shim for `tanstack-start-injected-head-scripts:v` in
-  `vite.config.ts` stays: it guards a separate, rarer stale-transform race
-  (virtual-module id resolved in the client env during dep re-optimization)
-  unrelated to this root cause; removing it here requires a rebuild +
-  revalidation.
+- ~~The dev-only shim for `tanstack-start-injected-head-scripts:v` in
+  `vite.config.ts` stays~~ **Removed in the 1.168.61 upgrade addendum below**:
+  the `tanstack-start-injected-head-scripts:v` virtual module no longer exists
+  upstream (the mechanism was replaced by `virtual:tanstack-start-dev-client-entry`),
+  so the shim had become a no-op.
   Invariant for future code: client-visible modules must never statically
   import `@tanstack/react-start/server` or any `*.server` barrel — reference
   server-only helpers only inside `.server()` handlers (matches upstream
   TanStack guidance, issues #6189/#5709).
+
+## Upgrade addendum: TanStack fleet → 1.168.61 + native CSRF
+
+**Target version.** `createCsrfMiddleware` is exported from `@tanstack/react-start` since
+**1.168.0** (the middleware itself landed upstream in `start-plugin-core@1.170.0`,
+PR [#7373](https://github.com/TanStack/router/pull/7373)). The **latest** release
+(`1.169.3`) is **not** usable here: from **1.169.0** Start requires **Vite 8** (this repo is on
+Vite 7.3.1) and removes the built-in `useSession` API. The newest release that both exports the
+native middleware and supports Vite 7 is **`@tanstack/react-start@1.168.61`**, so that is the
+target. The installed `1.150.0` has zero `createCsrfMiddleware` matches (verified in
+`node_modules`).
+
+**Pinning.** All `@tanstack/*` dependencies in `package.json` were changed from caret ranges to
+**exact** versions (root cause of the earlier fleet drift: a bare `bun install` re-resolved the
+1.139→1.150 fleet mid-session). The router/start fleet resolves to:
+
+| Package | Version |
+|---|---|
+| `@tanstack/react-start` | `1.168.61` |
+| `@tanstack/react-router` | `1.170.42` |
+| `@tanstack/react-router-devtools` | `1.167.2` |
+| `@tanstack/react-router-ssr-query` | `1.167.3` |
+| `@tanstack/router-plugin` | `1.168.43` |
+| `@tanstack/router-cli` | `1.167.45` |
+| `@tanstack/nitro-v2-vite-plugin` | `1.155.2` |
+| `@tanstack/react-query` / `-devtools` | `5.104.4` |
+| `@tanstack/react-form` / `react-devtools` / `charts` | `1.27.7` / `0.9.2` / `1.1.0` (unchanged) |
+
+`@tanstack/react-query` was bumped `5.90.18 → 5.104.4` because `react-router-ssr-query@1.167.3`
+declares a `>=5.102.0` peer. `react`/`react-dom` (19.2.3) and `vite` (7.3.1) are unchanged and
+satisfy the `1.168.61` peers (`react >=18||>=19`, `vite >=7`). The lockfile diff touches only
+the TanStack/nitro dependency subtree (new transitive deps such as the Solid/Vue support
+packages pulled in by `router-plugin`); no direct non-TanStack dependency drifted.
+
+**Two upgrade-induced fixes (beyond the CSRF migration):**
+
+1. **`import-protection` filename rules break our (pre-existing) module layout.** The upgrade
+   ships Start's import-protection plugin, whose default *filename* rules mock `**/*.server.*`
+   imports in the client and error on `**/*.client.*` imports in the server. The first made every
+   server-fn call throw `[import-protection] Mocked import used in dev client` in dev (forms
+   silently stopped working — inputs never updated React state); the second failed the production
+   build (`src/routes/__root.tsx` → `config.client.ts` in the SSR graph). `vite.config.ts` now
+   sets `importProtection: { client: { files: [] }, server: { files: [] } }`. The more important
+   *specifier* guards (`@tanstack/*-start/server` out of client code, `@tanstack/*-start/client*`
+   out of server code) are always merged with the defaults and stay active. The framework's
+   documented layout (`.functions.ts` for `createServerFn` wrappers, `.server.ts` for helpers;
+   client-only modules never imported by SSR) is the proper long-term fix and is tracked as
+   future work.
+2. **Devtools hydration mismatch.** `<TanStackDevtools>` renders a positioned container on the
+   client but nothing during SSR; with the new manifest the container occupied the slot of the
+   SSR-injected `virtual:tanstack-start-dev-client-entry` script and React aborted hydration,
+   leaving form handlers unattached. `src/routes/__root.tsx` now renders the devtools only after
+   mount (`useState`/`useEffect`), which is the standard client-only pattern and keeps server and
+   first-client render in agreement.
+
+**Verification (final state, Docker dev stack rebuilt on the new versions):**
+
+```
+$ bun run typecheck           # 0 errors
+$ bun run build               # production build succeeds (exit 0)
+$ bunx playwright test        # 24 passed / 23 skipped, twice consecutively, exit 0
+
+POST /api/dev-reset-rate-limits
+  Origin: https://evil.example -> 403
+  Origin: http://localhost:3000 -> 200
+  (no Origin/Sec-Fetch-Site/Referer) -> 403
+
+GET /  -> 307 -> /current-workout -> 307 -> /sign-in (200, no console errors)
+```
+
+Container confirmed on the new fleet (`bun pm ls`: `@tanstack/react-start@1.168.61`,
+`@tanstack/react-router@1.170.42`); no `does not provide an export named 'default'`,
+virtual-module or import-protection errors in the app logs.
+
+**e2e adaptations.** The reset hook (`e2e/auth.spec.ts` `beforeEach`) now sends an explicit
+same-origin `Origin: http://localhost:3000` header (Playwright's `request` client sends none,
+and the endpoint's native middleware rejects header-less requests). The `cross-origin POST is
+rejected` test re-targets the server-fn POST at `127.0.0.1:3000` instead of `localhost:3000` so
+the browser computes `Sec-Fetch-Site: cross-site` — the native middleware trusts that header
+before `Origin`, and a forged `Origin` alone (with an unchanged same-origin `Sec-Fetch-Site`) is
+ignored.

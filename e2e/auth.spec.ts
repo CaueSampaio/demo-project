@@ -53,7 +53,13 @@ async function fillAndSubmitSignUp(
 }
 
 test.beforeEach(async ({ request }) => {
-  const response = await request.post("/api/dev-reset-rate-limits");
+  // The endpoint is protected by TanStack Start's native CSRF middleware, whose
+  // strict default rejects requests that carry no Sec-Fetch-Site/Origin/Referer
+  // metadata. Playwright's APIRequestContext sends none of them, so we send an
+  // explicit same-origin Origin header (matching the app's own origin).
+  const response = await request.post("/api/dev-reset-rate-limits", {
+    headers: { origin: "http://localhost:3000" },
+  });
   expect(response.status()).toBe(200);
 });
 
@@ -141,8 +147,17 @@ test("6th sign-in attempt in a minute is rate limited", async ({ page }) => {
 test("cross-origin POST is rejected", async ({ page }) => {
   const { email } = await createTestUser();
 
-  await page.route("**/*", (route) =>
+  // Simulate a genuinely cross-site request. TanStack Start's native CSRF
+  // middleware trusts the browser-computed `Sec-Fetch-Site` header first, so a
+  // forged `Origin` alone is not enough: the browser recomputes
+  // `Sec-Fetch-Site: same-origin` for a same-origin target and the middleware
+  // trusts it. Re-targeting the server-function POST at a different origin
+  // (127.0.0.1 instead of localhost) makes the browser send
+  // `Sec-Fetch-Site: cross-site`, which the middleware rejects with 403 before
+  // any session cookie is issued.
+  await page.route("**/_serverFn/**", (route) =>
     route.continue({
+      url: route.request().url().replace("//localhost:3000/", "//127.0.0.1:3000/"),
       headers: { ...route.request().headers(), origin: "https://evil.example" },
     }),
   );

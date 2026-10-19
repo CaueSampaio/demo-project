@@ -1,5 +1,11 @@
-import { HeadContent, Scripts, createRootRouteWithContext, useRouter } from "@tanstack/react-router";
-import { useState } from "react";
+import {
+  HeadContent,
+  Scripts,
+  createRootRouteWithContext,
+  useRouter,
+  type ErrorComponentProps,
+} from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 import styles from "../styles.css?url";
 import { type QueryClient } from "@tanstack/react-query";
 import { getUserServerFn } from "@/lib/auth.server";
@@ -18,11 +24,15 @@ interface MyRouterContext {
   queryClient: QueryClient;
 }
 
-function RootErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
+function RootErrorComponent({ error: rawError, reset }: ErrorComponentProps) {
   const router = useRouter();
   const clientConfig = useClientConfig();
   const isDev = clientConfig.environment === "development";
   const [copied, setCopied] = useState(false);
+
+  // Router error boundaries type `error` as `unknown`; normalize so the
+  // details UI can render name/message/stack.
+  const error = rawError instanceof Error ? rawError : new Error(String(rawError));
 
   const copyErrorToClipboard = async () => {
     const errorInfo = `Error Name: ${error.name}
@@ -165,6 +175,14 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
 
 function RootDocument({ children }: { children: React.ReactNode }) {
   const config = useClientConfig();
+  // The devtools are client-only and render a positioned container on the
+  // client but nothing during SSR. Rendering them only after mount keeps the
+  // server HTML and the first client render in agreement — otherwise the
+  // container occupies the slot of the SSR-injected dev client entry script
+  // (`virtual:tanstack-start-dev-client-entry`) and React aborts hydration,
+  // leaving forms without event handlers.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   return (
     <html lang="en">
       <head>
@@ -173,7 +191,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       <body className="overflow-hidden">
         {children}
         <ToastContainer position="top-right" autoClose={4000} theme="light" />
-        {config.environment === "development" && (
+        {mounted && config.environment === "development" && (
           <TanStackDevtools
             config={{
               position: "bottom-left",
