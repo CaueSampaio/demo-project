@@ -10,8 +10,7 @@ const TabsList = forwardRef<ElementRef<typeof TabsPrimitive.List>, ComponentProp
     <TabsPrimitive.List
       ref={ref}
       className={cn(
-        "flex items-center gap-1 overflow-x-auto border-b border-border",
-        "[-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+        "tabs-scroll flex items-center gap-1 overflow-x-auto overscroll-x-contain border-b border-border",
         className,
       )}
       {...props}

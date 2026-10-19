@@ -151,3 +151,32 @@ test("tabs support arrow-key navigation", async ({ authed }) => {
   await expect(page.getByRole("tab", { name: "Alpha Bench" })).toBeFocused();
   await expect(page.getByRole("tab", { name: "Alpha Bench" })).toHaveAttribute("aria-selected", "true");
 });
+
+test("overflowing dialog tabs scroll horizontally to the last movement", async ({ authed }) => {
+  const { page, user } = authed;
+  const names = Array.from({ length: 7 }, (_, i) => `Scroll Movement ${i + 1}`);
+  await seedCompletedWorkout(user.id, {
+    daysAgo: 1,
+    sets: names.map((movementName) => ({ movementName, weight: 100, reps: 10 })),
+  });
+  const date = daysAgo(1);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/workout-history");
+  await page.getByRole("button", { name: `Check details for workout ${day(date)} at ${time(date)}` }).click();
+
+  const tablist = page.getByRole("dialog").getByRole("tablist");
+  const lastTab = tablist.getByRole("tab").last();
+  await expect(lastTab).toHaveText(names[6]!);
+
+  const before = await tablist.evaluate((el) => el.scrollLeft);
+  await tablist.evaluate((el) => {
+    el.scrollLeft = el.scrollWidth;
+  });
+  const after = await tablist.evaluate((el) => el.scrollLeft);
+  expect(after).toBeGreaterThan(before);
+
+  const listBox = await tablist.boundingBox();
+  const tabBox = await lastTab.boundingBox();
+  expect(tabBox!.x + tabBox!.width).toBeLessThanOrEqual(listBox!.x + listBox!.width + 1);
+});

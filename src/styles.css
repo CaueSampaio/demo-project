@@ -96,3 +96,19 @@
     display: none !important;
   }
 }
+
+/* Keep overflowed dialog tabs discoverable with a thin horizontal scrollbar. */
+.tabs-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+.tabs-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+.tabs-scroll::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 999px;
+}
+.tabs-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
