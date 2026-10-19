@@ -22,14 +22,14 @@ All 18 findings from the recon inventory, resolved in this pass unless noted.
 | 7 | `getServerConfigServerFn` returns `cookieSecret` + `database.url` to any browser (**critical**) | `src/lib/get-server-config.server.ts` and its endpoint deleted entirely | `0ea7549` (T4) |
 | 8 | `db.server.ts` obtains `DATABASE_URL` by calling the leaking server fn | Reads `configService.getAppConfig().database.url` directly (server-only) | `0ea7549` (T4) |
 | 9 | `User.password` is a plain `String` | Field name kept (partner decision); content is now the argon2id hash. No schema migration | `86bd202` (T3) |
-| 10 | `movements.server.ts` fns have no `authMiddleware` | Both `getMovementsServerFn` / `createMovementServerFn` require auth (`authMiddleware` + `csrfMiddleware`) | `a8f540f` (T8) |
+| 10 | `movements.server.ts` fns have no `authMiddleware` | Both `getMovementsServerFn` / `createMovementServerFn` require auth (`authMiddleware`; CSRF is now global — see #17) | `a8f540f` (T8) |
 | 11 | `/logout` is a GET page load (logout-CSRF-prone) | User-initiated `<form method="post">` calling `logoutServerFn` | `3c92758` (T6) |
 | 12 | Logout cookie delete may not match set attributes | Set/delete both use explicit `path: "/"`; delete mirrors the set attributes | `9d40de6` (T5) |
 | 13 | `Dockerfile` creates `appuser` but has no `USER` directive | Production stage runs `USER appuser` | `f7010ae` (T9) |
 | 14 | `public/config.js`: runtime-config mechanism is dead (envsubst never runs; dead Auth0/documentParser keys) | File, its `<script>` include in `__root.tsx`, and the `window.APP_CONFIG` path deleted; client falls through to build-time `VITE_ENVIRONMENT` | `0ea7549` (T4) |
 | 15 | `CLAUDE.md` says "Auth0-based authentication"; `@auth0/auth0-react` unused | Doc corrected (credential-based auth, argon2id, HMAC session cookie); dependency removed and lockfile synced; stale `get-server-config.server.ts` references removed; dev-under-Bun documented (**this task**) | this pass |
 | 16 | `e2e/helpers/auth.ts` inserts plaintext test users | `createTestUser` inserts a pinned argon2id hash (of `"e2test-password"`); custom passwords are rejected | `86bd202` (T3) |
-| 17 | No rate limiting / CSRF / security headers anywhere | Origin-check `csrfMiddleware` on **every** POST server fn (12/12); per-IP in-memory fixed-window limiter (sign-in 5/min, create-account 3/min; XFF trusted for keying **only** when `TRUST_PROXY=1`; expired buckets evicted with a 10k-entry soft cap) — headers remain future work | `3c92758` (T6), `4b0a6d9` (T7), this pass |
+| 17 | No rate limiting / CSRF / security headers anywhere | Origin-check `csrfMiddleware` registered **once** as global function middleware via a custom Start entry (`src/start.ts` → `createStart(() => ({ functionMiddleware: [csrfMiddleware] }))`), so it covers every server function instead of 12 per-fn `.middleware([csrfMiddleware])` attachments; per-IP in-memory fixed-window limiter (sign-in 5/min, create-account 3/min; XFF trusted for keying **only** when `TRUST_PROXY=1`; expired buckets evicted with a 10k-entry soft cap) — headers remain future work | `3c92758` (T6), `4b0a6d9` (T7), this pass (global registration) |
 | 18 | `docker-compose.dev.yml` hardcodes dev creds `postgres/postgres` | Documented as acceptable for the dev-only DB (see Deployment notes); no change | n/a (accepted) |
 
 **Count:** 18 findings → 17 fixed in this pass, 1 accepted-and-documented (#18). No finding left unfixed without an explicit partner decision.
@@ -47,7 +47,7 @@ was already green once the client was generated.
 | Finding (deferred from earlier tasks) | Resolution |
 |---|---|
 | Lazy-migration `prisma.user.update` ran on **every** successful sign-in (rehashing already-argon2id rows on login) | Guarded with `!isPasswordHash(user.password)` — only legacy plaintext rows migrate (flagged 3× across T3/T10 reviews) |
-| `resetRateLimitsServerFn` lacked `csrfMiddleware` (dev-only endpoint, but a POST server fn) | Gains `.middleware([csrfMiddleware])`, consistent with every other POST fn |
+| `resetRateLimitsServerFn` lacked `csrfMiddleware` (dev-only endpoint, but a POST server fn) | Covered by the global CSRF registration in `src/start.ts` (its explicit `.middleware([csrfMiddleware])` attachment was removed in the global-CSRF refactor) |
 
 **Residual note — e2e flakiness observed during the final verification:** one full-suite run
 at default parallelism (8 workers) failed 5 tests when the shared per-IP rate-limit buckets
@@ -57,6 +57,39 @@ keys on client IP and all tests share an IP; this is inherent to the documented 
 per-process design (see Deferred / future work — Redis-backed limiting). It predates this
 task and is unrelated to the changes above, but a CI (single-worker) runner is the current
 mitigation.
+
+### Global CSRF registration (custom Start entry)
+
+`csrfMiddleware` is no longer attached per server function. It is registered once in
+`src/start.ts`:
+
+```ts
+import { createStart } from "@tanstack/react-start";
+import { csrfMiddleware } from "./lib/csrf.server";
+
+export const startInstance = createStart(() => ({
+  functionMiddleware: [csrfMiddleware],
+}));
+```
+
+TanStack Start auto-resolves `src/start.ts` at plugin-config time and aliases it as
+`#tanstack-start-entry`; `startInstance.getOptions().functionMiddleware` is then prepended to
+every server function's own middleware (`executeMiddleware` in `@tanstack/start-client-core`).
+All 12 `.middleware([csrfMiddleware])` / `.middleware([csrfMiddleware, authMiddleware])`
+attachments across `auth`, `workouts`, `weight`, `movements`, and `rate-limit` server modules
+were removed as part of this change. `authMiddleware` attachments are untouched, and the
+`/api/dev-reset-rate-limits` raw route keeps its own `originMismatch()` check.
+
+**Motivation / experiment result:** the per-fn middleware-attachment pattern is a plausible
+trigger for the upstream TanStack Start dev hydration bug class (#6189 server-functions +
+middleware in dev, #5709, #6480), so global registration was tried both as the ergonomic ask
+from the partner and as a possible fix. **Result: the failure profile is unchanged** — two
+back-to-back full Playwright runs each produced `9 failed / 23 skipped / 8 did not run / 7
+passed`, identical to the pre-change baseline, still failing on
+`react-dom/server.browser.js` "does not provide an export named 'default'" during hydration.
+The refactor is kept for its single-registration ergonomics and correctness (the CSRF e2e test
+`cross-origin POST is rejected` passes, and a forged-Origin POST to a sign-in server fn is
+rejected 403), but it does **not** resolve the hydration bug.
 
 ## Deferred / future work
 

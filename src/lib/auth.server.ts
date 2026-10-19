@@ -2,7 +2,6 @@ import crypto from "node:crypto";
 import { redirect } from "@tanstack/react-router";
 import { getCookie, setCookie, deleteCookie } from "@tanstack/react-start/server";
 import { createMiddleware, createServerFn } from "@tanstack/react-start";
-import { csrfMiddleware } from "./csrf.server";
 import { sessionCookieName } from "./auth.consts";
 import { configService } from "./config.server";
 import { getServerSidePrismaClient } from "./db.server";
@@ -97,7 +96,6 @@ export const getUserServerFn = createServerFn().handler(async () => {
  * Signs in a user with email and password
  */
 export const signInServerFn = createServerFn({ method: "POST" })
-  .middleware([csrfMiddleware])
   .inputValidator(z.object({ email: z.string().email(), password: z.string().min(1).max(128) }))
   .handler(async ({ data }: { data: { email: string; password: string } }) => {
     const rl = checkRateLimit("signIn", getClientIp());
@@ -148,7 +146,6 @@ export const signInServerFn = createServerFn({ method: "POST" })
  * Creates a new user account
  */
 export const createAccountServerFn = createServerFn({ method: "POST" })
-  .middleware([csrfMiddleware])
   .inputValidator(z.object({ email: z.email(), name: z.string().min(1), password: z.string().min(6).max(128) }))
   .handler(async ({ data }: { data: { email: string; name: string; password: string } }) => {
     const rl = checkRateLimit("createAccount", getClientIp());
@@ -179,7 +176,6 @@ export const createAccountServerFn = createServerFn({ method: "POST" })
  * Logs out the current user
  */
 export const logoutServerFn = createServerFn({ method: "POST" })
-  .middleware([csrfMiddleware])
   .handler(async () => {
   // Match the attributes used when the cookie was set; browsers only accept
   // a delete (expired cookie) whose path/domain mirror the original set.

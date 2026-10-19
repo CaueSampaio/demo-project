@@ -39,12 +39,13 @@ The Docker setup uses volume mounts for hot reloading and ensures TypeScript typ
 ### Project Structure
 
 - `src/routes/` - File-based routing (TanStack Router auto-generates `routeTree.gen.ts`)
+- `src/start.ts` - Custom TanStack Start entry; registers the global CSRF function middleware (auto-resolved by the Start vite plugin)
 - `src/components/ui/` - Reusable React components
 - `src/integrations/tanstack-query/` - TanStack Query setup and providers
 - `src/lib/` - Server-side domain logic and shared utilities:
   - `auth.server.ts` + `auth.consts.ts` - Credential-based authentication (argon2id password hashing, HMAC-signed session cookie) - server functions + auth middleware
   - `password.server.ts` - Argon2id password hashing/verification helpers (`Bun.password`)
-  - `csrf.server.ts` - Origin-check CSRF middleware for mutating server functions
+  - `csrf.server.ts` - Origin-check CSRF middleware, registered globally for all server functions via the custom Start entry (`src/start.ts`)
   - `rate-limit.server.ts` - In-memory fixed-window rate limiting for auth endpoints
   - `config.server.ts` / `config.client.ts` - Runtime configuration for server and client
   - `db.server.ts` - Prisma client with the PostgreSQL driver adapter (`@prisma/adapter-pg`)
@@ -129,7 +130,7 @@ This project uses a multi-layered approach to state management:
 
 Server-side logic lives in `src/lib/*.server.ts` as TanStack Start server functions (`createServerFn`):
 
-- **Auth** (`src/lib/auth.server.ts`): `getUserServerFn`, `signInServerFn`, `createAccountServerFn`, `logoutServerFn`, plus `authMiddleware` for protecting functions. Passwords are hashed with argon2id (`src/lib/password.server.ts`); every POST server fn attaches `csrfMiddleware` (`src/lib/csrf.server.ts`).
+- **Auth** (`src/lib/auth.server.ts`): `getUserServerFn`, `signInServerFn`, `createAccountServerFn`, `logoutServerFn`, plus `authMiddleware` for protecting functions. Passwords are hashed with argon2id (`src/lib/password.server.ts`). CSRF protection (`src/lib/csrf.server.ts`) is registered **once** as global function middleware in `src/start.ts` (the custom TanStack Start entry, `createStart(() => ({ functionMiddleware: [csrfMiddleware] }))`), so it applies to every server function — no per-fn `.middleware([csrfMiddleware])` attachments.
 - **Workouts** (`src/lib/workouts.server.ts`): `createWorkoutServerFn`, `getCurrentWorkoutServerFn`, `completeWorkoutServerFn`, `addSetServerFn`, `deleteSetServerFn`, `getWorkoutHistoryServerFn`, `deleteWorkoutsServerFn`
 - **Movements** (`src/lib/movements.server.ts`): `getMovementsServerFn`, `createMovementServerFn`
 
