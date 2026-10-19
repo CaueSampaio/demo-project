@@ -192,7 +192,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         {mounted && config.environment === "development" && (
           <TanStackDevtools
             config={{
-              position: "bottom-right",
+              position: "top-right",
             }}
             plugins={[
               {
