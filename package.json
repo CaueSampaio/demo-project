@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit",
     "generate": "prisma generate",
     "test": "playwright test",
+    "test:unit": "bun test src",
     "test:ui": "playwright test --ui"
   },
   "dependencies": {
