@@ -13,9 +13,15 @@ const todayLong = () =>
     day: "numeric",
   });
 
-/** The history page's short-date format (workout picker / per-row delete labels). */
+/** The history page's short-date format (card title / accessible action names). */
 const day = (d: Date) =>
-  new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(d);
+  new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(d);
+const time = (d: Date) => new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" }).format(d);
 const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000);
 
 test.describe("Workouts", () => {
@@ -81,10 +87,17 @@ test.describe("Workouts", () => {
 
       await page.goto("/workout-history");
 
-      // Seeded workout appears as a pickable row and its details render.
-      await expect(page.getByRole("button", { name: `Select workout ${day(daysAgo(1))}` })).toBeVisible();
-      await expect(page.getByRole("paragraph").filter({ hasText: movementName })).toBeVisible();
-      await expect(page.getByText(/1st: 100 lbs × 8/)).toBeVisible();
+      // The seeded workout appears as a card; its details open in the dialog.
+      const date = daysAgo(1);
+      await expect(
+        page.getByRole("button", { name: `Check details for workout ${day(date)} at ${time(date)}` }),
+      ).toBeVisible();
+      await page.getByRole("button", { name: `Check details for workout ${day(date)} at ${time(date)}` }).click();
+
+      const dialog = page.getByRole("dialog");
+      await expect(dialog).toBeVisible();
+      await expect(dialog.getByRole("tabpanel")).toContainText(movementName);
+      await expect(dialog.getByText(/1st: 100 lbs × 8/)).toBeVisible();
     });
   });
 
@@ -130,7 +143,7 @@ test.describe("Workouts", () => {
       await expect(page.getByText("No active workout. Ready to start?")).toBeVisible();
 
       await page.goto("/workout-history");
-      await expect(page.getByRole("paragraph").filter({ hasText: movement.name })).toBeVisible();
+      await expect(page.getByText(movement.name)).toBeVisible();
     });
   });
 
@@ -147,17 +160,21 @@ test.describe("Workouts", () => {
       });
 
       await page.goto("/workout-history");
-      const rows = page.getByRole("button", { name: /Select workout/ });
-      await expect(rows).toHaveCount(2);
+      const checkDetails = page.getByRole("button", { name: /Check details for workout/ });
+      await expect(checkDetails).toHaveCount(2);
 
-      await page.getByRole("button", { name: `Delete workout ${day(daysAgo(1))}` }).click();
-      await expect(page.getByRole("button", { name: `Select workout ${day(daysAgo(1))}` })).toHaveCount(0);
-      await expect(page.getByRole("button", { name: /Select workout/ })).toHaveCount(1);
+      const first = daysAgo(1);
+      await page.getByRole("button", { name: `Delete workout ${day(first)} at ${time(first)}` }).click();
+      await expect(
+        page.getByRole("button", { name: `Check details for workout ${day(first)} at ${time(first)}` }),
+      ).toHaveCount(0);
+      await expect(checkDetails).toHaveCount(1);
 
-      await page.getByRole("button", { name: `Delete workout ${day(daysAgo(2))}` }).click();
+      const second = daysAgo(2);
+      await page.getByRole("button", { name: `Delete workout ${day(second)} at ${time(second)}` }).click();
 
       await expect(page.getByText("No completed workouts yet.")).toBeVisible();
-      await expect(page.getByRole("button", { name: /Select workout/ })).toHaveCount(0);
+      await expect(checkDetails).toHaveCount(0);
 
       // The server-fn round-trip is not awaited by the click, so poll until durable.
       await expect(async () => {
@@ -182,16 +199,22 @@ test.describe("Workouts", () => {
       });
 
       await page.goto("/workout-history");
-      await expect(page.getByRole("button", { name: /Select workout/ })).toHaveCount(2);
+      await expect(page.getByRole("button", { name: /Check details for workout/ })).toHaveCount(2);
 
-      await page.getByRole("button", { name: `Delete workout ${day(daysAgo(2))}` }).click();
-      await expect(page.getByRole("button", { name: `Select workout ${day(daysAgo(2))}` })).toHaveCount(0);
-      await expect(page.getByRole("button", { name: `Select workout ${day(daysAgo(1))}` })).toBeVisible();
+      const second = daysAgo(2);
+      await page.getByRole("button", { name: `Delete workout ${day(second)} at ${time(second)}` }).click();
+      await expect(
+        page.getByRole("button", { name: `Check details for workout ${day(second)} at ${time(second)}` }),
+      ).toHaveCount(0);
 
-      await page.getByRole("button", { name: `Delete workout ${day(daysAgo(1))}` }).click();
+      const first = daysAgo(1);
+      await expect(
+        page.getByRole("button", { name: `Check details for workout ${day(first)} at ${time(first)}` }),
+      ).toBeVisible();
+      await page.getByRole("button", { name: `Delete workout ${day(first)} at ${time(first)}` }).click();
 
       await expect(page.getByText("No completed workouts yet.")).toBeVisible();
-      await expect(page.getByRole("button", { name: /Select workout/ })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: /Check details for workout/ })).toHaveCount(0);
     });
   });
 });
