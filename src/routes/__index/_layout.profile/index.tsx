@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useSuspenseQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { bodyWeightsQueryOptions } from "./-queries/profile";
-import { addBodyWeightServerFn, deleteWeightServerFn } from "@/lib/weight.server";
+import { addBodyWeightServerFn, deleteWeightServerFn } from "@/lib/weight.functions";
 import { WeightInput, isValidWeight } from "@/components/weight-input";
 import { WeightChart } from "./weight-chart";
 
