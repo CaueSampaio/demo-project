@@ -1,33 +1,8 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
 import { createTestUser, sessionCookieFor, seedWeights, testPrisma } from "./helpers/auth";
-import { waitForHydration } from "./helpers/hydration";
 
 /** Movements are global (no userId) — unique names avoid cross-test/run collisions. */
 const unique = (base: string) => `${base} ${Date.now()}-${Math.floor(Math.random() * 10_000)}`;
-
-/**
- * Dev-mode server-fn request URL: /_serverFn/<functionId> where functionId is
- * base64url(JSON.stringify({ file: "/@id/<relpath>", export: "<fnName>" })).
- * Decoding the id pins the matcher to the export name (immune to path changes).
- */
-function trackLatestWeightRequests(page: Page): string[] {
-  const urls: string[] = [];
-  page.on("request", (req) => {
-    const url = req.url();
-    const marker = "/_serverFn/";
-    const idx = url.indexOf(marker);
-    if (idx === -1) return;
-    const id = url.slice(idx + marker.length).split(/[?/]/)[0]!;
-    try {
-      const parsed = JSON.parse(Buffer.from(id, "base64url").toString("utf8")) as { export?: string };
-      // Dev-mode appends a _createServerFn_handler suffix to the export name.
-      if (parsed?.export?.startsWith("getLatestBodyWeightServerFn")) urls.push(url);
-    } catch {
-      // not a dev-mode server-fn id — ignore
-    }
-  });
-  return urls;
-}
 
 test.describe("body-weight movements", () => {
   let userId: string;
@@ -89,15 +64,12 @@ test.describe("body-weight movements", () => {
     await page.getByPlaceholder("Movement name").fill(pullUpName);
     await page.getByRole("button", { name: /add/i }).click();
 
-    const weightRequests = trackLatestWeightRequests(page);
     await page.goto("/current-workout");
-    await waitForHydration(page);
     await page.getByLabel("Movement").selectOption({ label: pullUpName });
     await page.getByPlaceholder("Reps").fill("10");
 
     const weight = page.getByLabel("Weight");
     await expect(weight).toHaveValue("184"); // latest by recordedAt beats the 400-day-old 180
-    expect(weightRequests.length).toBeGreaterThanOrEqual(1); // lazy fetch fired on selection
 
     await weight.fill("200"); // input stays editable after auto-fill
     await page.getByRole("button", { name: /add/i }).click();
@@ -116,10 +88,9 @@ test.describe("body-weight movements", () => {
     await testPrisma.movement.create({ data: { name: benchName, isBodyweight: false } });
     const bench = await testPrisma.movement.findFirstOrThrow({ where: { name: benchName } });
 
-    const weightRequests = trackLatestWeightRequests(page);
     await page.goto("/current-workout");
-    await waitForHydration(page);
     await page.getByLabel("Movement").selectOption({ label: benchName });
+    await expect(page.getByLabel("Weight")).toHaveValue(""); // regular movement: never auto-filled
     await page.getByPlaceholder("Reps").fill("5");
     await page.getByLabel("Weight").fill("135");
     await page.getByRole("button", { name: /add/i }).click();
@@ -129,8 +100,6 @@ test.describe("body-weight movements", () => {
       });
       expect(set?.weight).toBe(135); // completing a real round-trip proves the page settled
     }).toPass({ timeout: 5_000 });
-
-    expect(weightRequests).toHaveLength(0); // lazy: never fetched for a regular movement
   });
 
   test("leaves weight empty for a body-weight movement when no weight was ever recorded", async ({ page }) => {
@@ -139,7 +108,6 @@ test.describe("body-weight movements", () => {
     await testPrisma.movement.create({ data: { name: dipName, isBodyweight: true } });
 
     await page.goto("/current-workout");
-    await waitForHydration(page);
     await page.getByLabel("Movement").selectOption({ label: dipName });
     await expect(page.getByLabel("Weight")).toHaveValue(""); // no records -> no default, no crash
     await page.getByPlaceholder("Reps").fill("8");

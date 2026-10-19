@@ -58,7 +58,7 @@ test.beforeEach(async ({ request }) => {
   // metadata. Playwright's APIRequestContext sends none of them, so we send an
   // explicit same-origin Origin header (matching the app's own origin).
   const response = await request.post("/api/dev-reset-rate-limits", {
-    headers: { origin: "http://localhost:3000" },
+    headers: { origin: "http://localhost:4173" },
   });
   expect(response.status()).toBe(200);
 });
@@ -157,7 +157,7 @@ test("cross-origin POST is rejected", async ({ page }) => {
   // any session cookie is issued.
   await page.route("**/_serverFn/**", (route) =>
     route.continue({
-      url: route.request().url().replace("//localhost:3000/", "//127.0.0.1:3000/"),
+      url: route.request().url().replace("//localhost:4173/", "//127.0.0.1:4173/"),
       headers: { ...route.request().headers(), origin: "https://evil.example" },
     }),
   );
