@@ -41,6 +41,7 @@ model Set {
   movement   Movement @relation(fields: [movementId], references: [id])
   reps       Int
   weight     Int
+  createdAt  DateTime @default(now())
 }
 
 model BodyWeightRecord {

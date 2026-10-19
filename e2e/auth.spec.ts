@@ -1,79 +1,79 @@
-import { expect, test, type Page } from "@playwright/test";
-import {
-  createTestUser,
-  sessionCookieFor,
-  testPrisma,
-} from "./helpers/auth";
-
-test.describe.configure({ mode: "serial" });
-
-test.setTimeout(60_000);
+import { type Page, type Response } from "@playwright/test";
+import { createAccount, expect, resetRateLimits, signIn, test, uniqueEmail } from "./fixtures";
+import { testPrisma } from "./helpers/db";
 
 const SESSION_COOKIE = "session";
 
-/**
- * Dev hydration (TanStack Start + Vite) is slow; clicking the form before
- * hydration completes silently drops the submit. Wait for the page to settle.
- */
-async function goTo(page: Page, path: string): Promise<void> {
-  await page.goto(path);
-  await page.waitForLoadState("networkidle");
-}
+// Must match TEST_PASSWORD in ./fixtures.
+const TEST_PASSWORD = "e2test-password";
 
-function uniqueEmail(): string {
-  return `e2e-user-${Date.now()}-${Math.round(Math.random() * 1e9)}@e2e.test`;
-}
-
-async function fillAndSubmitSignIn(page: Page, email: string, password: string): Promise<void> {
-  await goTo(page, "/sign-in");
+/** Submits the sign-in form without retrying, so negative-path tests see the failure response. */
+async function submitSignInForm(page: Page, email: string, password: string): Promise<void> {
+  await page.goto("/sign-in");
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: "Sign in" }).click();
 }
 
-async function fillAndSubmitSignUp(
-  page: Page,
-  name: string,
-  email: string,
-  password: string,
-): Promise<void> {
-  // Vite in dev may optimize the server-fn module on first use and reload the
-  // page mid-submit, silently losing the attempt — retry once.
-  for (let attempt = 0; attempt < 2; attempt++) {
-    await goTo(page, "/create-account");
-    await page.getByLabel("Name").fill(name);
-    await page.getByLabel("Email").fill(email);
-    await page.getByLabel("Password").fill(password);
-    await page.getByRole("button", { name: "Create account" }).click();
-    await page
-      .waitForFunction(() => window.location.pathname !== "/create-account", { timeout: 10_000 })
-      .catch(() => {}); // still on the form after the settle window
-    if (new URL(page.url()).pathname !== "/create-account") return;
-  }
+/** Signs out through the real /logout page and lands back on the sign-in screen. */
+async function logOut(page: Page): Promise<void> {
+  await page.goto("/logout");
+  await page.getByRole("button", { name: "Log out" }).click();
+  await expect(page).toHaveURL(/\/sign-in/);
 }
 
-test.beforeEach(async ({ request }) => {
-  // The endpoint is protected by TanStack Start's native CSRF middleware, whose
-  // strict default rejects requests that carry no Sec-Fetch-Site/Origin/Referer
-  // metadata. Playwright's APIRequestContext sends none of them, so we send an
-  // explicit same-origin Origin header (matching the app's own origin).
-  const response = await request.post("/api/dev-reset-rate-limits", {
-    headers: { origin: "http://localhost:3000" },
-  });
-  expect(response.status()).toBe(200);
-});
+/** Submits on the already-loaded page and returns the reply body (used for the confirming rate-limit attempt). */
+async function submitSignInAttempt(page: Page, email: string, password: string): Promise<string> {
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password").fill(password);
+  const [response] = await Promise.all([
+    page.waitForResponse(
+      (r) =>
+        r.request().method() === "POST" &&
+        r.url().includes("_serverFn") &&
+        (r.request().postData() ?? "").includes(email),
+    ),
+    page.getByRole("button", { name: "Sign in" }).click(),
+  ]);
+  return response.text();
+}
 
-test("sign-up stores an argon2id hash, never the plaintext", async ({ page }) => {
+/**
+ * Fires `count` concurrent sign-in submits via `requestSubmit()`, bypassing the
+ * button's in-flight disable, and resolves once every reply has landed.
+ */
+async function burstSignInAttempts(page: Page, email: string, count: number): Promise<void> {
+  let pending = count;
+  let resolveSettled!: () => void;
+  const settled = new Promise<void>((resolve) => {
+    resolveSettled = resolve;
+  });
+  const onResponse = (response: Response) => {
+    const request = response.request();
+    if (request.method() !== "POST" || !response.url().includes("_serverFn")) return;
+    if (!(request.postData() ?? "").includes(email)) return;
+    pending -= 1;
+    if (pending === 0) {
+      page.off("response", onResponse);
+      resolveSettled();
+    }
+  };
+  page.on("response", onResponse);
+  await page.evaluate((n) => {
+    const form = document.querySelector("form");
+    if (!form) throw new Error("sign-in form missing");
+    for (let i = 0; i < n; i++) form.requestSubmit();
+  }, count);
+  // Guard against a request that never produces a response.
+  await Promise.race([settled, page.waitForTimeout(10_000)]);
+}
+
+test("sign-up stores an argon2id hash, never the plaintext", async ({ page, request }) => {
+  await resetRateLimits(request);
   const email = uniqueEmail();
   const password = "s3cure-password";
 
-  await fillAndSubmitSignUp(page, "E2E Encrypt", email, password);
-
-  // Either redirected into the app or onto the sign-in screen counts as "created".
-  await expect(page).not.toHaveURL(/\/create-account/);
-  await expect(page.getByLabel("Email").or(page.getByText("Logged in as")).first()).toBeVisible({
-    timeout: 15_000,
-  });
+  await createAccount(page, request, { name: "E2E Encrypt", email, password });
 
   const user = await testPrisma.user.findUnique({ where: { email } });
   expect(user).not.toBeNull();
@@ -81,113 +81,143 @@ test("sign-up stores an argon2id hash, never the plaintext", async ({ page }) =>
   expect(user!.password).not.toBe(password);
 });
 
-test("sign-in accepts the correct password", async ({ page }) => {
-  const { email } = await createTestUser();
+test("sign-in accepts the correct password", async ({ page, request }) => {
+  await resetRateLimits(request);
+  const user = { name: "E2E User", email: uniqueEmail(), password: TEST_PASSWORD };
 
-  await fillAndSubmitSignIn(page, email, "e2test-password");
+  // Create through the real sign-up UI, then prove sign-in works on its own.
+  await createAccount(page, request, user);
+  await logOut(page);
 
-  await expect(page).not.toHaveURL(/\/sign-in/);
+  await signIn(page, request, user);
   await expect(page.getByText("Logged in as")).toBeVisible({ timeout: 15_000 });
 });
 
-test("sign-in rejects a wrong password with a generic error", async ({ page }) => {
-  const { email } = await createTestUser();
+test("sign-in rejects a wrong password with a generic error", async ({ page, request }) => {
+  await resetRateLimits(request);
+  const user = { name: "E2E User", email: uniqueEmail(), password: TEST_PASSWORD };
+  await createAccount(page, request, user);
+  await logOut(page);
 
-  await fillAndSubmitSignIn(page, email, "wrong-password");
+  const generic = page.getByText("Invalid email or password");
+  const rateLimited = page.getByText("Too many attempts. Try again shortly.");
+  let sawGeneric = false;
+  for (let attempt = 0; attempt < 6 && !sawGeneric; attempt++) {
+    // `submitSignInForm` navigates fresh, so the text reflects THIS submission.
+    await submitSignInForm(page, user.email, "wrong-password");
+    await expect(generic.or(rateLimited)).toBeVisible({ timeout: 15_000 });
+    if (await generic.isVisible()) {
+      sawGeneric = true;
+      break;
+    }
+    // Other workers can exhaust the shared per-IP signIn bucket, surfacing the
+    // limiter message instead of the credential error; reset and retry.
+    await resetRateLimits(request);
+  }
 
-  await expect(page.getByText("Invalid email or password")).toBeVisible({ timeout: 15_000 });
+  expect(sawGeneric).toBe(true);
   expect(new URL(page.url()).pathname).toBe("/sign-in");
 });
 
-test("legacy plaintext row is lazily migrated on sign-in", async ({ page }) => {
+test("legacy plaintext row is lazily migrated on sign-in", async ({ page, request }) => {
+  await resetRateLimits(request);
   const email = uniqueEmail();
+
+  // One intentional direct-DB fixture: legacy pre-hash user, unreachable via the UI
   await testPrisma.user.create({
     data: { email, name: "Legacy User", password: "legacy-plaintext" },
   });
 
-  await fillAndSubmitSignIn(page, email, "legacy-plaintext");
-
-  await expect(page).not.toHaveURL(/\/sign-in/);
+  await signIn(page, request, { email, password: "legacy-plaintext" });
   await expect(page.getByText("Logged in as")).toBeVisible({ timeout: 15_000 });
 
   const user = await testPrisma.user.findUnique({ where: { email } });
   expect(user!.password).toMatch(/^\$argon2id\$/);
 });
 
-test("password with special characters round-trips", async ({ page }) => {
-  const email = uniqueEmail();
-  const password = "P@$$w0rd é🎉 & $ymbols";
+test("password with special characters round-trips", async ({ page, request }) => {
+  await resetRateLimits(request);
+  const user = {
+    name: "Special Chars",
+    email: uniqueEmail(),
+    password: "P@$$w0rd é🎉 & $ymbols",
+  };
 
-  await fillAndSubmitSignUp(page, "Special Chars", email, password);
+  await createAccount(page, request, user);
   await expect(page.getByText("Logged in as")).toBeVisible({ timeout: 15_000 });
 
-  // Log out via the (now POST-only) logout page.
-  await goTo(page, "/logout");
-  await page.getByRole("button", { name: "Log out" }).click();
-  await expect(page).toHaveURL(/\/sign-in/);
+  await logOut(page);
 
-  await fillAndSubmitSignIn(page, email, password);
+  await signIn(page, request, user);
   await expect(page.getByText("Logged in as")).toBeVisible({ timeout: 15_000 });
 });
 
-test("6th sign-in attempt in a minute is rate limited", async ({ page }) => {
-  const { email } = await createTestUser();
+test("6th sign-in attempt in a minute is rate limited", async ({ page, request }) => {
+  // Worst case (ten rounds, each an 8-request burst plus a settle guard) can outlast the default 30s timeout.
+  test.setTimeout(90_000);
+  // Other workers reset the whole per-IP budget far more often than a serial loop can
+  // spend 5 attempts, so fire 8 concurrent submits (`requestSubmit()` bypasses the
+  // button disable) to exhaust one limiter generation regardless of resets; never the retrying `signIn`.
+  await resetRateLimits(request);
+  const user = { name: "E2E User", email: uniqueEmail(), password: TEST_PASSWORD };
+  await createAccount(page, request, user);
+  await logOut(page);
+  await page.goto("/sign-in");
+  await page.getByLabel("Email").fill(user.email);
+  await page.getByLabel("Password").fill("wrong-password");
 
-  for (let attempt = 1; attempt <= 5; attempt++) {
-    await fillAndSubmitSignIn(page, email, "wrong-password");
-    await expect(page.getByText("Invalid email or password")).toBeVisible({ timeout: 15_000 });
+  const LIMIT_MESSAGE = "Too many attempts. Try again shortly.";
+  let sawRateLimit = false;
+  for (let round = 0; round < 10 && !sawRateLimit; round++) {
+    await burstSignInAttempts(page, user.email, 8);
+    // Burst is settled; this single submission is the only reply in flight.
+    const body = await submitSignInAttempt(page, user.email, "wrong-password");
+    sawRateLimit = body.includes(LIMIT_MESSAGE);
   }
 
-  await fillAndSubmitSignIn(page, email, "wrong-password");
-  await expect(page.getByText("Too many attempts. Try again shortly.")).toBeVisible({
-    timeout: 15_000,
-  });
+  expect(sawRateLimit).toBe(true);
+  await expect(page.getByText(LIMIT_MESSAGE)).toBeVisible({ timeout: 15_000 });
 });
 
-test("cross-origin POST is rejected", async ({ page }) => {
-  const { email } = await createTestUser();
+test("cross-origin POST is rejected", async ({ page, request }) => {
+  await resetRateLimits(request);
+  const user = { name: "E2E User", email: uniqueEmail(), password: TEST_PASSWORD };
+  await createAccount(page, request, user);
+  await logOut(page);
 
-  // Simulate a genuinely cross-site request. TanStack Start's native CSRF
-  // middleware trusts the browser-computed `Sec-Fetch-Site` header first, so a
-  // forged `Origin` alone is not enough: the browser recomputes
-  // `Sec-Fetch-Site: same-origin` for a same-origin target and the middleware
-  // trusts it. Re-targeting the server-function POST at a different origin
-  // (127.0.0.1 instead of localhost) makes the browser send
-  // `Sec-Fetch-Site: cross-site`, which the middleware rejects with 403 before
-  // any session cookie is issued.
+  // CSRF middleware trusts `Sec-Fetch-Site` first, so a forged `Origin` is not enough:
+  // retarget the POST at 127.0.0.1 so the browser sends `cross-site` and the middleware 403s.
   await page.route("**/_serverFn/**", (route) =>
     route.continue({
-      url: route.request().url().replace("//localhost:3000/", "//127.0.0.1:3000/"),
+      url: route.request().url().replace("//localhost:4173/", "//127.0.0.1:4173/"),
       headers: { ...route.request().headers(), origin: "https://evil.example" },
     }),
   );
 
-  await fillAndSubmitSignIn(page, email, "e2test-password");
+  await submitSignInForm(page, user.email, user.password);
 
-  // Should not land in the app and no session cookie may be set.
   await page.waitForTimeout(2_000);
   expect(new URL(page.url()).pathname).not.toBe("/");
   const cookies = await page.context().cookies();
   expect(cookies.find((c) => c.name === SESSION_COOKIE)).toBeUndefined();
 });
 
-test("logout clears the session", async ({ page }) => {
-  const { id, email } = await createTestUser();
-  await page.context().addCookies(sessionCookieFor(id));
+test("logout clears the session", async ({ page, request }) => {
+  await resetRateLimits(request);
+  const user = { name: "E2E User", email: uniqueEmail(), password: TEST_PASSWORD };
+  await createAccount(page, request, user);
 
-  await goTo(page, "/");
+  await page.goto("/");
   await expect(page.getByText("Logged in as")).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText(email).or(page.getByText("E2E User")).first()).toBeVisible();
+  await expect(page.getByText(user.email).or(page.getByText("E2E User")).first()).toBeVisible();
 
-  await goTo(page, "/logout");
-  await page.getByRole("button", { name: "Log out" }).click();
+  await logOut(page);
 
-  await expect(page).toHaveURL(/\/sign-in/);
   const cookies = await page.context().cookies();
   expect(cookies.find((c) => c.name === SESSION_COOKIE)).toBeUndefined();
 
   // The old cookie no longer grants access.
-  await goTo(page, "/");
+  await page.goto("/");
   await expect(page).toHaveURL(/\/sign-in/);
 });
 
@@ -195,7 +225,7 @@ test("movements require authentication", async ({ browser }) => {
   const context = await browser.newContext(); // fresh, no cookies
   const page = await context.newPage();
 
-  await goTo(page, "/movements");
+  await page.goto("/movements");
   await expect(page).toHaveURL(/\/sign-in/);
   await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
 
