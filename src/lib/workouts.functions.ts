@@ -112,6 +112,7 @@ export const getWorkoutHistoryServerFn = createServerFn()
       include: {
         sets: {
           include: { movement: true },
+          orderBy: { createdAt: "asc" },
         },
       },
     });
