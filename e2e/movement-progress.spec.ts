@@ -91,6 +91,22 @@ test.describe("movement all-time progress page", () => {
     await expectCircles(chart, 1);
   });
 
+  test("shows all-time summary stats", async ({ authed }) => {
+    const { page, user } = authed;
+    const userSet = await testPrisma.set.findFirstOrThrow({
+      where: { movement: { name: "Alpha Bench" }, workout: { userId: user.id } },
+      include: { movement: true },
+    });
+
+    await page.goto(`/movements/${userSet.movementId}`);
+
+    const stats = page.getByTestId("movement-stats");
+    await expect(stats).toContainText("150");
+    await expect(stats).toContainText("36");
+    await expect(stats).toContainText("5,090");
+    await expect(stats).toContainText("3");
+  });
+
   test("shows the empty state for an unused movement", async ({ authed }) => {
     const { page } = authed;
     const movement = await testPrisma.movement.create({
