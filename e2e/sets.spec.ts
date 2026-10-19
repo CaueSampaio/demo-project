@@ -87,7 +87,8 @@ test.describe("Sets", () => {
       await page.goto("/current-workout");
       const rows = page.getByRole("listitem");
       await expect(rows).toHaveCount(2);
-      // The query returns sets without an `orderBy`, so assert by content, not position.
+      // Both rows share the movement; the query now orders sets by createdAt asc,
+      // so filter by content to distinguish them.
       await expect(rows.filter({ hasText: "10 reps × 135 lbs" })).toContainText(movement.name);
       await expect(rows.filter({ hasText: "8 reps × 155 lbs" })).toContainText(movement.name);
     });

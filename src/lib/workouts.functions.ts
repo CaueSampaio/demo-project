@@ -27,6 +27,7 @@ export const getCurrentWorkoutServerFn = createServerFn()
       include: {
         sets: {
           include: { movement: true },
+          orderBy: { createdAt: "asc" },
         },
       },
     });
