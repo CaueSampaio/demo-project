@@ -1,3 +1,4 @@
+import { RateLimiterMemory, RateLimiterRes } from "rate-limiter-flexible";
 import { getRequestIP } from "@tanstack/react-start/server";
 
 export type RateLimitBucket = "signIn" | "createAccount";
@@ -12,60 +13,46 @@ export const RATE_LIMITS: Record<RateLimitBucket, { limit: number; windowMs: num
 // spoof per-IP buckets and bypass the limit. Read once; requires restart after changing.
 const TRUST_XFF = process.env.TRUST_PROXY === "1";
 
-const buckets = new Map<string, { count: number; windowStart: number }>();
-
-/** Soft cap on tracked buckets; guards against unbounded memory growth. */
-const MAX_BUCKETS = 10_000;
-
-function pruneExpired(now: number) {
-  for (const [key, entry] of buckets) {
-    if (now - entry.windowStart >= RATE_LIMITS[bucketOf(key)].windowMs) {
-      buckets.delete(key);
-    }
-  }
-}
-
-function bucketOf(key: string): RateLimitBucket {
-  return (key.split(":", 1)[0] ?? "signIn") as RateLimitBucket;
+function createLimiter(bucket: RateLimitBucket): RateLimiterMemory {
+  const { limit, windowMs } = RATE_LIMITS[bucket];
+  return new RateLimiterMemory({
+    keyPrefix: bucket,
+    points: limit,
+    duration: windowMs / 1000,
+    execEvenly: false,
+  });
 }
 
 // Single-process only: state is not shared across instances or restarts.
-export function checkRateLimit(
+let limiters: Record<RateLimitBucket, RateLimiterMemory> = {
+  signIn: createLimiter("signIn"),
+  createAccount: createLimiter("createAccount"),
+};
+
+export async function checkRateLimit(
   bucket: RateLimitBucket,
   ip: string,
-): { allowed: boolean; retryAfterSeconds: number } {
-  const { limit, windowMs } = RATE_LIMITS[bucket];
-  const key = `${bucket}:${ip}`;
-  const now = Date.now();
-  const entry = buckets.get(key);
-  if (entry && now - entry.windowStart >= windowMs) {
-    buckets.delete(key);
-  }
-  if (!entry || now - entry.windowStart >= windowMs) {
-    if (buckets.size >= MAX_BUCKETS) {
-      pruneExpired(now);
-      if (buckets.size >= MAX_BUCKETS) {
-        // Still over the soft cap: shed the oldest windows by insertion order.
-        let excess = buckets.size - MAX_BUCKETS + 1;
-        for (const key of buckets.keys()) {
-          if (excess-- <= 0) break;
-          buckets.delete(key);
-        }
-      }
-    }
-    buckets.set(key, { count: 1, windowStart: now });
+): Promise<{ allowed: boolean; retryAfterSeconds: number }> {
+  try {
+    await limiters[bucket].consume(ip, 1);
     return { allowed: true, retryAfterSeconds: 0 };
+  } catch (rejection) {
+    if (rejection instanceof RateLimiterRes) {
+      return { allowed: false, retryAfterSeconds: Math.ceil(rejection.msBeforeNext / 1000) };
+    }
+    throw rejection;
   }
-  entry.count += 1;
-  if (entry.count > limit) {
-    return { allowed: false, retryAfterSeconds: Math.ceil((entry.windowStart + windowMs - now) / 1000) };
-  }
-  return { allowed: true, retryAfterSeconds: 0 };
 }
 
-/** Clears every rate-limit bucket. Dev/e2e use only. */
+/**
+ * Rebuilds both limiters; `RateLimiterMemory` has no bulk flush, so swapping the
+ * instances is the only way to clear every key. Dev/e2e use only.
+ */
 export function resetRateLimits() {
-  buckets.clear();
+  limiters = {
+    signIn: createLimiter("signIn"),
+    createAccount: createLimiter("createAccount"),
+  };
 }
 
 // Fail-closed: an unresolvable IP keys a shared "unknown" bucket, so those

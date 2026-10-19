@@ -34,6 +34,7 @@
     "motion": "^12.26.2",
     "nitro": "^3.0.1-alpha.1",
     "prisma": "^7.2.0",
+    "rate-limiter-flexible": "^11.2.3",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-plaid-link": "^4.1.1",

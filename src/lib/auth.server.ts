@@ -92,7 +92,7 @@ export const getUserServerFn = createServerFn().handler(async () => {
 export const signInServerFn = createServerFn({ method: "POST" })
   .inputValidator(z.object({ email: z.string().email(), password: z.string().min(1).max(128) }))
   .handler(async ({ data }: { data: { email: string; password: string } }) => {
-    const rl = checkRateLimit("signIn", getClientIp());
+    const rl = await checkRateLimit("signIn", getClientIp());
     if (!rl.allowed) return { success: false as const, error: "Too many attempts. Try again shortly." };
 
     const { email, password } = data;
@@ -138,7 +138,7 @@ export const signInServerFn = createServerFn({ method: "POST" })
 export const createAccountServerFn = createServerFn({ method: "POST" })
   .inputValidator(z.object({ email: z.email(), name: z.string().min(1), password: z.string().min(6).max(128) }))
   .handler(async ({ data }: { data: { email: string; name: string; password: string } }) => {
-    const rl = checkRateLimit("createAccount", getClientIp());
+    const rl = await checkRateLimit("createAccount", getClientIp());
     if (!rl.allowed) return { success: false as const, error: "Too many attempts. Try again shortly." };
 
     const { email, name, password } = data;

@@ -29,7 +29,7 @@ All 18 findings from the recon inventory, resolved in this pass unless noted.
 | 14 | `public/config.js`: runtime-config mechanism is dead (envsubst never runs; dead Auth0/documentParser keys) | File, its `<script>` include in `__root.tsx`, and the `window.APP_CONFIG` path deleted; client falls through to build-time `VITE_ENVIRONMENT` | `0ea7549` (T4) |
 | 15 | `CLAUDE.md` says "Auth0-based authentication"; `@auth0/auth0-react` unused | Doc corrected (credential-based auth, argon2id, HMAC session cookie); dependency removed and lockfile synced; stale `get-server-config.server.ts` references removed; dev-under-Bun documented (**this task**) | this pass |
 | 16 | `e2e/helpers/auth.ts` inserts plaintext test users | `createTestUser` inserts a pinned argon2id hash (of `"e2test-password"`); custom passwords are rejected | `86bd202` (T3) |
-| 17 | No rate limiting / CSRF / security headers anywhere | CSRF uses TanStack Start's **native** `createCsrfMiddleware` (framework `@tanstack/react-start@1.168.61`; native since 1.168.0), registered **once** on `requestMiddleware` in `src/start.ts` with `filter: (ctx) => ctx.handlerType === "serverFn"`, so it covers every server function; the hand-rolled `src/lib/csrf.server.ts` is deleted; the dev-only `/api/dev-reset-rate-limits` route (not a server fn) installs the same middleware itself. Per-IP in-memory fixed-window limiter (sign-in 5/min, create-account 3/min; XFF trusted for keying **only** when `TRUST_PROXY=1`; expired buckets evicted with a 10k-entry soft cap) — headers remain future work | `3c92758` (T6), `4b0a6d9` (T7), this pass (native CSRF) |
+| 17 | No rate limiting / CSRF / security headers anywhere | CSRF uses TanStack Start's **native** `createCsrfMiddleware` (framework `@tanstack/react-start@1.168.61`; native since 1.168.0), registered **once** on `requestMiddleware` in `src/start.ts` with `filter: (ctx) => ctx.handlerType === "serverFn"`, so it covers every server function; the hand-rolled `src/lib/csrf.server.ts` is deleted; the dev-only `/api/dev-reset-rate-limits` route (not a server fn) installs the same middleware itself. Per-IP in-memory limiter (sign-in 5/min, create-account 3/min; XFF trusted for keying **only** when `TRUST_PROXY=1`) — later moved from the hand-rolled fixed window to `rate-limiter-flexible` (see the RLF addendum); headers remain future work | `3c92758` (T6), `4b0a6d9` (T7), this pass (native CSRF) |
 | 18 | `docker-compose.dev.yml` hardcodes dev creds `postgres/postgres` | Documented as acceptable for the dev-only DB (see Deployment notes); no change | n/a (accepted) |
 
 **Count:** 18 findings → 17 fixed in this pass, 1 accepted-and-documented (#18). No finding left unfixed without an explicit partner decision.
@@ -291,3 +291,26 @@ rejected` test re-targets the server-fn POST at `127.0.0.1:3000` instead of `loc
 the browser computes `Sec-Fetch-Site: cross-site` — the native middleware trusts that header
 before `Origin`, and a forged `Origin` alone (with an unchanged same-origin `Sec-Fetch-Site`) is
 ignored.
+
+## Addendum: rate limiter on `rate-limiter-flexible`
+
+**Change.** The hand-rolled fixed-window limiter was replaced by
+`rate-limiter-flexible@11.2.3` (`RateLimiterMemory`, one instance per bucket: sign-in 5/60s,
+create-account 3/60s). The public contract is preserved — `RateLimitBucket`, `RATE_LIMITS`,
+`resetRateLimits` and `getClientIp` (unchanged TRUST_XFF logic) keep their shape — with one
+necessary exception: `checkRateLimit` is now **async**, because `RateLimiterMemory.consume` is
+promise-based. Both call sites in `auth.server.ts` therefore `await` it. Consume semantics match
+the old behaviour: the 5-point budget is spent by the first five sign-in attempts and the sixth
+consume rejects with a `RateLimiterRes` (mapped to `retryAfterSeconds = ceil(msBeforeNext/1000)`),
+so the e2e "6th sign-in attempt in a minute is rate limited" test still holds.
+
+**Documented trade-off (supersedes the 10k soft cap).** RLF's memory tier does lazy expiration on
+consume and has **no hard key cap**, so the previous `MAX_BUCKETS` cap and its oldest-first
+eviction are gone — `softMemoryCap`/eviction loss was dropped with them: a flood of distinct IPs
+grows the map until an existing key is next consumed and expired entries are swept. This is
+acceptable at the current single-instance dev scope; the Redis (shared-store) tier with TTL is the
+intended fix at multi-instance scale, and is the drop-in path for the deferred multi-instance item.
+
+**Reset hook.** `resetRateLimits()` rebuilds both `RateLimiterMemory` instances. RLF has no bulk
+"clear all" (and `resetKey` clears a single key), so swapping the instances is the way to clear
+every IP for the e2e `beforeEach` hook.
