@@ -59,6 +59,36 @@ test.describe("Movements", () => {
     });
   });
 
+  test.describe("search and badges", () => {
+    test("filters movements by name and restores the list", async ({ authed }) => {
+      const { page } = authed;
+      const alpha = unique("Searchable Alpha");
+      const beta = unique("Searchable Beta");
+      await testPrisma.movement.createMany({ data: [{ name: alpha }, { name: beta }] });
+
+      await page.goto("/movements");
+      const search = page.getByLabel("Search movements");
+
+      await search.fill("Searchable Alpha");
+      await expect(page.getByRole("listitem").filter({ hasText: alpha })).toBeVisible();
+      await expect(page.getByRole("listitem").filter({ hasText: beta })).toHaveCount(0);
+
+      await search.fill("");
+      await expect(page.getByRole("listitem").filter({ hasText: beta })).toBeVisible();
+    });
+
+    test("shows a bodyweight badge and keeps the movement link name", async ({ authed }) => {
+      const { page } = authed;
+      const name = unique("Weighted Dip");
+      await testPrisma.movement.create({ data: { name, isBodyweight: true } });
+
+      await page.goto("/movements");
+      const row = page.getByRole("listitem").filter({ hasText: name });
+      await expect(row.getByText("Bodyweight")).toBeVisible();
+      await expect(row.getByRole("link", { name })).toBeVisible();
+    });
+  });
+
   test.describe("read", () => {
     test("should display all movements on the movements page", async ({ authed }) => {
       const { page } = authed;
