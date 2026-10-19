@@ -54,7 +54,12 @@ async function submitAuth(
     await page.goto(authPath);
     await submit();
 
-    const signedIn = page.getByText("Logged in as");
+    // The account footer is desktop-only; below `lg` the mobile tab bar is the
+    // signed-in marker living in the shell.
+    const signedIn = page
+      .getByText("Logged in as")
+      .filter({ visible: true })
+      .or(page.getByRole("navigation", { name: "Mobile" }));
     const rateLimited = page.getByText("Too many attempts");
     await expect(signedIn.or(rateLimited)).toBeVisible({ timeout: 15_000 });
     if (await signedIn.isVisible()) {
