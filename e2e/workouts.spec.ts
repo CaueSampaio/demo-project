@@ -96,6 +96,8 @@ test.describe("Workouts", () => {
 
       const dialog = page.getByRole("dialog");
       await expect(dialog).toBeVisible();
+      // Set lists live on the movement tabs; Overview only charts the volume trend.
+      await dialog.getByRole("tab", { name: movementName }).click();
       await expect(dialog.getByRole("tabpanel")).toContainText(movementName);
       await expect(dialog.getByText(/1st: 100 lbs × 8/)).toBeVisible();
     });
