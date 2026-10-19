@@ -33,3 +33,7 @@ test-results/
 
 # git worktrees
 .worktrees/
+
+# local agent tooling artifacts
+.superpowers/
+.playwright-mcp/
