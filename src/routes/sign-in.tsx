@@ -44,7 +44,7 @@ function SignInPage() {
   };
 
   return (
-    <div className="h-dvh overflow-y-auto bg-background lg:grid lg:grid-cols-2 lg:overflow-hidden">
+    <div className="h-dvh overflow-y-auto bg-background lg:grid lg:grid-cols-2">
       <aside className="hidden flex-col justify-between bg-primary px-12 py-14 text-primary-foreground lg:flex">
         <img
           src="/wordmark.svg"
