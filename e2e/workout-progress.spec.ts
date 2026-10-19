@@ -17,6 +17,22 @@ const openWorkout = async (page: Page, date: Date) => {
   await expect(page.getByRole("dialog")).toBeVisible();
 };
 
+/**
+ * Reads the exact `completedAt` the database assigned. Seeds and assertions can
+ * land on either side of a minute boundary, so locators must use these values
+ * rather than recomputing `daysAgo()` at test time.
+ */
+const completedAtOf = async (workoutId: string): Promise<Date> => {
+  const workout = await testPrisma.workout.findUniqueOrThrow({
+    where: { id: workoutId },
+    select: { completedAt: true },
+  });
+  return workout.completedAt!;
+};
+
+// Seeded W1 (3d), W2 (2d), W3 (1d), in that order, with their real timestamps.
+let seededDates: Date[] = [];
+
 test.describe("workout-history details", () => {
   test.beforeEach(async ({ authed }) => {
     const userId = authed.user.id;
@@ -24,7 +40,7 @@ test.describe("workout-history details", () => {
     // Deterministic history (Alpha Bench + Zulu Squat, alphabetical => Alpha first):
     // W1 (3d) Alpha 135x10, 145x8 + Zulu 225x5; W2 (2d) Alpha 150x6 twice + Zulu 240x5;
     // W3 (1d) Alpha 140x12. W2 has two Alpha sets so its bubble chart can be counted exactly.
-    await seedCompletedWorkout(userId, {
+    const w1 = await seedCompletedWorkout(userId, {
       daysAgo: 3,
       sets: [
         { movementName: "Alpha Bench", weight: 135, reps: 10 },
@@ -32,7 +48,7 @@ test.describe("workout-history details", () => {
         { movementName: "Zulu Squat", weight: 225, reps: 5 },
       ],
     });
-    await seedCompletedWorkout(userId, {
+    const w2 = await seedCompletedWorkout(userId, {
       daysAgo: 2,
       sets: [
         { movementName: "Alpha Bench", weight: 150, reps: 6 },
@@ -40,23 +56,28 @@ test.describe("workout-history details", () => {
         { movementName: "Zulu Squat", weight: 240, reps: 5 },
       ],
     });
-    await seedCompletedWorkout(userId, {
+    const w3 = await seedCompletedWorkout(userId, {
       daysAgo: 1,
       sets: [{ movementName: "Alpha Bench", weight: 140, reps: 12 }],
     });
+
+    seededDates = [await completedAtOf(w1), await completedAtOf(w2), await completedAtOf(w3)];
   });
 
   test("overview shows the selected workout and volume chart", async ({ authed }) => {
     const { page } = authed;
+    const date = seededDates[1]!;
     await page.goto("/workout-history");
-    await openWorkout(page, daysAgo(2));
+    await openWorkout(page, date);
 
     const dialog = page.getByRole("dialog");
     await expect(dialog.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
-    const overviewChart = dialog.getByRole("img", { name: `Volume by movement for ${day(daysAgo(2))}` });
+    const overviewChart = dialog.getByRole("img", { name: `Volume by movement for ${day(date)}` });
     await expect(overviewChart).toBeVisible();
     // The stacked areas themselves must paint, not just the axes.
     await expect(overviewChart.locator("path")).not.toHaveCount(0);
+    // The selected date is marked inside the chart (dashed accent rule), not only by the caption.
+    await expect(overviewChart.locator('line[stroke="var(--color-accent)"]')).toHaveCount(1);
     await expect(dialog.getByText("Selected workout")).toBeVisible();
     await expect(dialog.getByRole("tab", { name: "Alpha Bench" })).toBeVisible();
     await expect(dialog.getByRole("tab", { name: "Zulu Squat" })).toBeVisible();
@@ -64,13 +85,14 @@ test.describe("workout-history details", () => {
 
   test("movement tabs show weight on x, reps on y, and sets", async ({ authed }) => {
     const { page } = authed;
+    const date = seededDates[1]!;
     await page.goto("/workout-history");
-    await openWorkout(page, daysAgo(2));
+    await openWorkout(page, date);
 
     const dialog = page.getByRole("dialog");
     await dialog.getByRole("tab", { name: "Alpha Bench" }).click();
     const chart = dialog.getByRole("img", {
-      name: `Alpha Bench — weight vs reps (area = volume) on ${day(daysAgo(2))}`,
+      name: `Alpha Bench — weight vs reps (area = volume) on ${day(date)}`,
     });
     await expect(chart).toBeVisible();
     await expect.poll(() => chart.locator("circle").count(), { timeout: 15_000 }).toBe(2);
@@ -96,7 +118,7 @@ test.describe("workout-history details", () => {
     await expect(page.getByRole("button", { name: /Check details for workout/ })).toHaveCount(3);
 
     // W3 still reports its own volume (1,680 = 140 × 12), not the active 999 set.
-    await openWorkout(page, daysAgo(1));
+    await openWorkout(page, seededDates[2]!);
     const dialog = page.getByRole("dialog");
     await expect(dialog.getByText("1,680").first()).toBeVisible();
     await dialog.getByRole("tab", { name: "Alpha Bench" }).click();
@@ -106,15 +128,16 @@ test.describe("workout-history details", () => {
 
   test("deletes a workout from the list and updates the cards", async ({ authed }) => {
     const { page, user } = authed;
+    const date = seededDates[1]!;
     await page.goto("/workout-history");
 
     // Open W2 in the dialog, close it, then delete it from its card action.
-    await openWorkout(page, daysAgo(2));
+    await openWorkout(page, date);
     await expect(page.getByRole("dialog")).toContainText("Alpha Bench");
     await page.getByRole("button", { name: "Close dialog" }).click();
     await expect(page.getByRole("dialog")).toBeHidden();
 
-    await page.getByRole("button", { name: `Delete workout ${day(daysAgo(2))} at ${time(daysAgo(2))}` }).click();
+    await page.getByRole("button", { name: `Delete workout ${day(date)} at ${time(date)}` }).click();
 
     // The deleted card is gone and no set list can show its 150 lb sets.
     await expect(page.getByRole("button", { name: /Check details for workout/ })).toHaveCount(2);
@@ -135,7 +158,7 @@ test("keeps top five movements plus Other", async ({ authed }) => {
     daysAgo: 5,
     sets: [{ movementName: "Series 0", weight: 10, reps: 10 }],
   });
-  await seedCompletedWorkout(user.id, {
+  const recentId = await seedCompletedWorkout(user.id, {
     daysAgo: 1,
     sets: Array.from({ length: 7 }, (_, i) => ({
       movementName: `Series ${i}`,
@@ -143,7 +166,7 @@ test("keeps top five movements plus Other", async ({ authed }) => {
       reps: 10,
     })),
   });
-  const date = daysAgo(1);
+  const date = await completedAtOf(recentId);
   await page.goto("/workout-history");
   await openWorkout(page, date);
 
@@ -154,11 +177,11 @@ test("keeps top five movements plus Other", async ({ authed }) => {
 
 test("explains when there is not enough history for a trend", async ({ authed }) => {
   const { page, user } = authed;
-  await seedCompletedWorkout(user.id, {
+  const workoutId = await seedCompletedWorkout(user.id, {
     daysAgo: 1,
     sets: [{ movementName: "Only Bench", weight: 135, reps: 10 }],
   });
-  const date = daysAgo(1);
+  const date = await completedAtOf(workoutId);
 
   await page.goto("/workout-history");
   await openWorkout(page, date);

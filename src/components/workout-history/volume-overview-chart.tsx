@@ -1,5 +1,5 @@
 import type { CSSProperties, JSX } from "react";
-import { areaY, defineChart, stack, type ChartPoint } from "@tanstack/charts";
+import { areaY, defineChart, ruleX, stack, type ChartPoint } from "@tanstack/charts";
 import { scaleUtc } from "d3-scale";
 import { scaleLinear } from "@tanstack/charts/scales/linear";
 import { tooltip } from "@tanstack/charts/tooltip";
@@ -48,7 +48,7 @@ function seriesColor(name: string, index: number): string {
 }
 
 /** Soft stacked areas with a thin boundary stroke and a grouped, per-movement tooltip. */
-function overviewDefinition(rows: VolumeRow[], series: string[]) {
+function overviewDefinition(rows: VolumeRow[], series: string[], selectedDate: Date) {
   const summary = (points: readonly ChartPoint<VolumeRow, Date, number>[]) => {
     const date = points[0]?.xValue;
     const heading = date instanceof Date ? formatWorkoutDate(date) : String(date ?? "");
@@ -66,6 +66,14 @@ function overviewDefinition(rows: VolumeRow[], series: string[]) {
         fillOpacity: 0.55,
         stroke: (row) => seriesColor(row.movementName, series.indexOf(row.movementName)),
         strokeWidth: 1,
+      }),
+      // Mark the selected workout's date inside the chart itself.
+      ruleX([{ date: selectedDate }], {
+        x: "date",
+        stroke: "var(--color-accent)",
+        strokeWidth: 2,
+        strokeDasharray: "4 3",
+        strokeOpacity: 1,
       }),
     ],
     scales: {
@@ -112,7 +120,7 @@ export function VolumeOverviewChart({ workouts, selectedWorkoutId }: VolumeOverv
     return <p className="text-sm text-muted-foreground">Not enough history for a trend yet.</p>;
   }
 
-  const definition = overviewDefinition(rows, series);
+  const definition = overviewDefinition(rows, series, selectedDate);
 
   return (
     <div className="space-y-3">
