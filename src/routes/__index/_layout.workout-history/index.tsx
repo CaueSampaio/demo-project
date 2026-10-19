@@ -2,7 +2,7 @@ import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { deleteWorkoutsServerFn } from "@/lib/workouts.server";
+import { deleteWorkoutsServerFn } from "@/lib/workouts.functions";
 import { Trash2 } from "lucide-react";
 import { workoutHistoryQueryOptions } from "./-queries/workout-history";
 import { useSuspenseQuery, useMutation, useQueryClient } from "@tanstack/react-query";

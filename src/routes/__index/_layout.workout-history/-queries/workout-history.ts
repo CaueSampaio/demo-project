@@ -1,4 +1,4 @@
-import { getWorkoutHistoryServerFn } from "@/lib/workouts.server";
+import { getWorkoutHistoryServerFn } from "@/lib/workouts.functions";
 import { queryOptions } from "@tanstack/react-query";
 
 export const workoutHistoryQueryOptions = () =>

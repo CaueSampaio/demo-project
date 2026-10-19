@@ -23,16 +23,23 @@ function getTestPrismaClient(): PrismaClient {
 /** Lazily-instantiated Prisma client for the dev database, exported so tests can assert DB state directly. */
 export const testPrisma = getTestPrismaClient();
 
+export const E2E_TEST_PASSWORD_HASH =
+  "$argon2id$v=19$m=65536,t=2,p=1$5BE8E974lmIJ/giXJ3V8tq6/WBr7x5E4CWRbShve+cE$AKtw6jCqwG//EI70+DQlS9OXIXHIP/NZuBIOXxs8OZQ";
+
 /**
  * Creates a throwaway user directly in the dev database for e2e tests.
  */
-export async function createTestUser(): Promise<{ id: string; email: string }> {
+export async function createTestUser(password = "e2test-password"): Promise<{ id: string; email: string }> {
+  if (password !== "e2test-password") {
+    throw new Error("custom passwords unsupported — use the sign-up UI flow");
+  }
+
   const prisma = getTestPrismaClient();
   const user = await prisma.user.create({
     data: {
       email: `e2e-${crypto.randomUUID()}@test.local`,
       name: "E2E User",
-      password: "e2test-password",
+      password: E2E_TEST_PASSWORD_HASH,
     },
   });
   return { id: user.id, email: user.email };

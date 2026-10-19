@@ -15,6 +15,11 @@ const config = defineConfig(({ mode }) => {
         projects: ["./tsconfig.json"],
       }),
       tailwindcss(),
+      // Defaults only: client code cannot import `**/*.server.*` (and never the
+      // `@tanstack/*-start/server` specifiers); server code cannot import
+      // `**/*.client.*`. Server functions live in `*.functions.ts` (client-safe
+      // RPC stubs), server-only helpers in `*.server.ts` (reached only via
+      // `await import(...)` inside handler bodies). No overrides needed.
       tanstackStart(),
       nitro({
         preset: "node-server",

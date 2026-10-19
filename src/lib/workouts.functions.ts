@@ -1,11 +1,11 @@
 import { createServerFn } from "@tanstack/react-start";
-import { getServerSidePrismaClient } from "@/lib/db.server";
-import { authMiddleware } from "@/lib/auth.server";
+import { authMiddleware } from "@/lib/auth.functions";
 import { z } from "zod";
 
 export const createWorkoutServerFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
+    const { getServerSidePrismaClient } = await import("@/lib/db.server");
     const prisma = await getServerSidePrismaClient();
     const workout = await prisma.workout.create({
       data: {
@@ -18,6 +18,7 @@ export const createWorkoutServerFn = createServerFn({ method: "POST" })
 export const getCurrentWorkoutServerFn = createServerFn()
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
+    const { getServerSidePrismaClient } = await import("@/lib/db.server");
     const prisma = await getServerSidePrismaClient();
     // Get the most recent workout for the user
     const workout = await prisma.workout.findFirst({
@@ -35,6 +36,7 @@ export const getCurrentWorkoutServerFn = createServerFn()
 export const completeWorkoutServerFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
+    const { getServerSidePrismaClient } = await import("@/lib/db.server");
     const prisma = await getServerSidePrismaClient();
     const workout = await prisma.workout.findFirst({
       where: { userId: context.user.id, completedAt: null },
@@ -60,6 +62,7 @@ export const addSetServerFn = createServerFn({ method: "POST" })
       context: { user: { id: string } };
       data: { movementId: string; reps: number; weight: number };
     }) => {
+      const { getServerSidePrismaClient } = await import("@/lib/db.server");
       const prisma = await getServerSidePrismaClient();
       const workout = await prisma.workout.findFirst({
         where: { userId: context.user.id, completedAt: null },
@@ -84,6 +87,7 @@ export const deleteSetServerFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .inputValidator(z.object({ setId: z.string() }))
   .handler(async ({ context, data }: { context: { user: { id: string } }; data: { setId: string } }) => {
+    const { getServerSidePrismaClient } = await import("@/lib/db.server");
     const prisma = await getServerSidePrismaClient();
     // Verify the set belongs to the user's active workout
     const set = await prisma.set.findFirst({
@@ -99,6 +103,7 @@ export const deleteSetServerFn = createServerFn({ method: "POST" })
 export const getWorkoutHistoryServerFn = createServerFn()
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
+    const { getServerSidePrismaClient } = await import("@/lib/db.server");
     const prisma = await getServerSidePrismaClient();
     const workouts = await prisma.workout.findMany({
       where: { userId: context.user.id, completedAt: { not: null } },
@@ -116,6 +121,7 @@ export const deleteWorkoutsServerFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .inputValidator(z.object({ workoutIds: z.array(z.string()) }))
   .handler(async ({ context, data }: { context: { user: { id: string } }; data: { workoutIds: string[] } }) => {
+    const { getServerSidePrismaClient } = await import("@/lib/db.server");
     const prisma = await getServerSidePrismaClient();
     // Delete sets first, then workouts (only for this user's workouts)
     await prisma.set.deleteMany({

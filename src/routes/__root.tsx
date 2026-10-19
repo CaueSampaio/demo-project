@@ -1,14 +1,19 @@
-import { HeadContent, Scripts, createRootRouteWithContext, useRouter } from "@tanstack/react-router";
-import { useState } from "react";
+import {
+  HeadContent,
+  Scripts,
+  createRootRouteWithContext,
+  useRouter,
+  type ErrorComponentProps,
+} from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 import styles from "../styles.css?url";
 import { type QueryClient } from "@tanstack/react-query";
-import { getUserServerFn } from "@/lib/auth.server";
+import { getUserServerFn } from "@/lib/auth.functions";
 import { TanStackDevtools } from "@tanstack/react-devtools";
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 import { ReactQueryDevtoolsPanel } from "@tanstack/react-query-devtools";
-import { useClientConfig } from "@/lib/config.client";
+import { useClientConfig } from "@/lib/config";
 import { AlertTriangle, RefreshCw, Home, Bug, Copy, Check } from "lucide-react";
-import { getServerConfigServerFn } from "@/lib/get-server-config.server";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -19,11 +24,15 @@ interface MyRouterContext {
   queryClient: QueryClient;
 }
 
-function RootErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
+function RootErrorComponent({ error: rawError, reset }: ErrorComponentProps) {
   const router = useRouter();
   const clientConfig = useClientConfig();
   const isDev = clientConfig.environment === "development";
   const [copied, setCopied] = useState(false);
+
+  // Router error boundaries type `error` as `unknown`; normalize so the
+  // details UI can render name/message/stack.
+  const error = rawError instanceof Error ? rawError : new Error(String(rawError));
 
   const copyErrorToClipboard = async () => {
     const errorInfo = `Error Name: ${error.name}
@@ -113,7 +122,6 @@ ${error.stack || "No stack trace available"}`;
 
 export const Route = createRootRouteWithContext<MyRouterContext>()({
   beforeLoad: async () => {
-    await getServerConfigServerFn();
     const user = await getUserServerFn();
     return { user };
   },
@@ -133,10 +141,6 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
       },
     ],
     scripts: [
-      {
-        src: "/config.js",
-        type: "text/javascript",
-      },
       // ...(import.meta.env.DEV
       //   ? [
       //       {
@@ -171,6 +175,9 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
 
 function RootDocument({ children }: { children: React.ReactNode }) {
   const config = useClientConfig();
+  // Devtools are client-only: render them only after mount to keep SSR and first client render in agreement.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   return (
     <html lang="en">
       <head>
@@ -179,7 +186,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       <body className="overflow-hidden">
         {children}
         <ToastContainer position="top-right" autoClose={4000} theme="light" />
-        {config.environment === "development" && (
+        {mounted && config.environment === "development" && (
           <TanStackDevtools
             config={{
               position: "bottom-left",

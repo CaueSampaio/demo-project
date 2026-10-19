@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { createAccountServerFn } from "@/lib/auth.server";
+import { createAccountServerFn } from "@/lib/auth.functions";
 
 export const Route = createFileRoute("/create-account")({
   beforeLoad: ({ context }) => {
@@ -28,7 +28,6 @@ function CreateAccountPage() {
     setIsLoading(true);
 
     try {
-      console.log("Creating account", { email, name, password });
       const result = await createAccountServerFn({ data: { email, name, password } });
       console.log("Result", result);
       if (result.success) {
