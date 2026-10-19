@@ -38,8 +38,8 @@ test.describe("workout-history details", () => {
     const userId = authed.user.id;
 
     // Deterministic history (Alpha Bench + Zulu Squat, alphabetical => Alpha first):
-    // W1 (3d) Alpha 135x10, 145x8 + Zulu 225x5; W2 (2d) Alpha 150x6 twice + Zulu 240x5;
-    // W3 (1d) Alpha 140x12. W2 has two Alpha sets so its bubble chart can be counted exactly.
+    // W1 (3d) Alpha 135x10, 145x8 + Zulu 225x5; W2 (2d) Alpha 150x6 + Zulu 240x5;
+    // W3 (1d) Alpha 140x12. W1 has two Alpha sets so its chart points can be counted exactly.
     const w1 = await seedCompletedWorkout(userId, {
       daysAgo: 3,
       sets: [
@@ -51,7 +51,6 @@ test.describe("workout-history details", () => {
     const w2 = await seedCompletedWorkout(userId, {
       daysAgo: 2,
       sets: [
-        { movementName: "Alpha Bench", weight: 150, reps: 6 },
         { movementName: "Alpha Bench", weight: 150, reps: 6 },
         { movementName: "Zulu Squat", weight: 240, reps: 5 },
       ],
@@ -85,7 +84,7 @@ test.describe("workout-history details", () => {
 
   test("movement tabs show weight on x, reps on y, and sets", async ({ authed }) => {
     const { page } = authed;
-    const date = seededDates[1]!;
+    const date = seededDates[0]!;
     await page.goto("/workout-history");
     await openWorkout(page, date);
 
@@ -96,10 +95,11 @@ test.describe("workout-history details", () => {
     });
     await expect(chart).toBeVisible();
     await expect.poll(() => chart.locator("circle").count(), { timeout: 15_000 }).toBe(2);
-    await expect(dialog.getByText(/150\s+lbs/).first()).toBeVisible();
-    await expect(dialog.getByText(/6\s+reps/).first()).toBeVisible();
-    await expect(dialog.getByText(/900\s+volume/).first()).toBeVisible();
-    await expect(dialog.getByText(/1st: 150 lbs × 6/)).toBeVisible();
+    await expect(dialog.getByText(/145\s+lbs/).first()).toBeVisible();
+    await expect(dialog.getByText("18", { exact: true })).toBeVisible();
+    await expect(dialog.getByText(/2,510/).first()).toBeVisible();
+    await expect(dialog.getByText(/1st: 135 lbs × 10/)).toBeVisible();
+    await expect(dialog.getByText(/2nd: 145 lbs × 8/)).toBeVisible();
   });
 
   test("ignores sets from active workouts", async ({ authed }) => {

@@ -1,6 +1,5 @@
 import type { CSSProperties, JSX } from "react";
-import { defineChart, dot, lineY, type ChartPoint } from "@tanstack/charts";
-import { scaleSqrt } from "d3-scale";
+import { areaY, defineChart, dot, lineY, type ChartPoint } from "@tanstack/charts";
 import { scaleLinear } from "@tanstack/charts/scales/linear";
 import { tooltip } from "@tanstack/charts/tooltip";
 import { Chart } from "@tanstack/charts/react";
@@ -14,7 +13,8 @@ type MovementSetChartProps = {
   selectedDate: Date | string;
 };
 
-/** One bubble per set: x = weight, y = reps, bubble area = volume (weight × reps). */
+/** One point per set: x = weight, y = reps, with the shaded area under the line
+ * giving the volume its visual weight. */
 type SetRow = {
   ordinal: number;
   reps: number;
@@ -44,20 +44,28 @@ const TOOLTIP_STYLE = {
   "--ts-chart-tooltip-shadow": "var(--shadow-sm)",
 } as CSSProperties;
 
-function setChartDefinition(rows: SetRow[], maxVolume: number) {
+function setChartDefinition(rows: SetRow[]) {
+  const maxReps = Math.max(...rows.map((row) => row.reps), 1);
+
   return defineChart({
     marks: [
-      // The line connects performed order; the bubbles carry weight, reps and volume.
+      // The shaded area under the reps/weight line is the volume visual. The
+      // exact per-set volume remains in the tooltip and the set list.
+      areaY(rows, {
+        x: "weight",
+        y: "reps",
+        fill: SERIES_COLOR,
+        fillOpacity: 0.16,
+      }),
       lineY(rows, { x: "weight", y: "reps", stroke: SERIES_COLOR, strokeWidth: 2 }),
+      // Small points keep the eye on the set positions instead of oversized bubbles.
       dot(rows, {
         x: "weight",
         y: "reps",
-        r: "volume",
-        rScale: scaleSqrt().domain([0, maxVolume]).range([0, 22]),
+        r: 4,
         fill: SERIES_COLOR,
-        fillOpacity: 0.75,
-        stroke: SERIES_COLOR,
-        strokeWidth: 1.5,
+        stroke: "var(--color-card)",
+        strokeWidth: 2,
       }),
     ],
     scales: {
@@ -68,7 +76,7 @@ function setChartDefinition(rows: SetRow[], maxVolume: number) {
         axis: { label: "Weight (lbs)" },
       },
       y: {
-        scale: scaleLinear,
+        scale: scaleLinear().domain([0, maxReps]),
         nice: true,
         axis: { label: "Reps" },
       },
@@ -87,8 +95,9 @@ function setChartDefinition(rows: SetRow[], maxVolume: number) {
 }
 
 /**
- * Weight (x) vs reps (y) scatter for one movement's sets in the selected
- * workout, with a sqrt-scaled bubble radius per set volume.
+ * Weight (x) vs reps (y) area chart for one movement's sets in the selected
+ * workout. The shaded area supplies the volume visual; tooltips and the set
+ * list carry the exact weight × reps volume.
  */
 export function MovementSetChart({ movementName, sets, selectedDate }: MovementSetChartProps): JSX.Element {
   const height = useChartHeight(220, 300);
@@ -105,12 +114,9 @@ export function MovementSetChart({ movementName, sets, selectedDate }: MovementS
     label: `Set ${index + 1}`,
   }));
 
-  // Guard the degenerate all-zero-volume case so the sqrt scale stays finite.
-  const maxVolume = rows.reduce((max, row) => Math.max(max, row.volume), 0) || 1;
-
   return (
     <Chart
-      definition={setChartDefinition(rows, maxVolume)}
+      definition={setChartDefinition(rows)}
       height={height}
       ariaLabel={`${movementName} — weight vs reps (area = volume) on ${formatWorkoutDate(selectedDate)}`}
       style={TOOLTIP_STYLE}
