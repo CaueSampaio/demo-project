@@ -30,3 +30,6 @@ prisma/db/
 # Playwright
 playwright-report/
 test-results/
+
+# git worktrees
+.worktrees/
