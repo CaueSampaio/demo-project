@@ -46,6 +46,7 @@
 - Modify: `src/components/ui/input.tsx`
 - Modify: `src/components/ui/select.tsx`
 - Modify: `src/components/ui/alert.tsx`
+- Modify: `src/components/ui/dropdown-menu.tsx` (tokens only; no behavior change)
 - Create: `src/components/ui/badge.tsx`
 - Create: `src/components/ui/field.tsx`
 - Create: `src/components/ui/checkbox.tsx`
@@ -114,6 +115,7 @@ Keep the existing `@import "tailwindcss";`. Add `::selection` with primary and r
 - `Input` / `Select`: `bg-card border-input rounded-[10px] h-10`; focus ring; native select chevron.
 - `Alert`: use the status surfaces from the spec.
 - `Badge`, `Field`, `Checkbox`: implement the interfaces above with warm tokens and visible focus.
+- `DropdownMenu`: replace the old gray surfaces with `bg-card`, `border-border`, and `text-foreground`; do not change its behavior.
 
 - [ ] **Step 5: Load Manrope and set the body class**
 
